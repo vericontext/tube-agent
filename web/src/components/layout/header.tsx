@@ -4,14 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
-import { useAuth } from "@/hooks/use-auth";
 import { Search, Activity } from "lucide-react";
 
 export function Header() {
   const router = useRouter();
-  const { user, signOut } = useAuth();
   const [query, setQuery] = useState("");
 
   const handleSearch = (e: React.FormEvent) => {
@@ -44,15 +41,6 @@ export function Header() {
 
         <div className="flex items-center gap-2 ml-auto">
           <ThemeToggle />
-          {user ? (
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              Sign Out
-            </Button>
-          ) : (
-            <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/login" />}>
-              Sign In
-            </Button>
-          )}
         </div>
       </div>
     </header>

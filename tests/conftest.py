@@ -1,12 +1,10 @@
 """Shared test fixtures."""
 
-import jwt
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, StaticPool
 
-from tube_agent.models.database import Base
 from tube_agent.storage.postgres import PostgresStorage
 from tube_agent.api.deps import get_storage
 import tube_agent.api.deps as deps_module
@@ -47,34 +45,6 @@ def _make_client(storage_instance):
 def client(storage):
     """FastAPI TestClient with storage override."""
     yield from _make_client(storage)
-
-
-# --- Auth helpers ---
-
-JWT_SECRET = "test-jwt-secret-key"
-
-
-def _make_token(sub: str = "user-1", expired: bool = False) -> str:
-    payload = {
-        "sub": sub,
-        "aud": "authenticated",
-        "role": "authenticated",
-        "exp": datetime.now(timezone.utc) + timedelta(hours=-1 if expired else 1),
-        "iat": datetime.now(timezone.utc),
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-
-
-@pytest.fixture()
-def auth_header(monkeypatch):
-    """Valid Authorization header. Patches JWT secret for verification."""
-    monkeypatch.setenv("SUPABASE_JWT_SECRET", JWT_SECRET)
-    monkeypatch.setenv("SUPABASE_URL", "")
-    from tube_agent.config import get_settings
-    get_settings.cache_clear()
-    token = _make_token()
-    yield {"Authorization": f"Bearer {token}"}
-    get_settings.cache_clear()
 
 
 # --- Sample data ---

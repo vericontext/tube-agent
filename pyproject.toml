@@ -13,17 +13,9 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     # Database
     "sqlalchemy>=2.0",
-    "psycopg2-binary>=2.9",
     # Validation & config
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
-    # Auth
-    "PyJWT[crypto]>=2.8",
-    # Task queue
-    "celery[redis]>=5.4",
-    "redis>=5.0",
-    # R2 / S3 storage
-    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]

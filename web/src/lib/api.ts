@@ -13,7 +13,7 @@ import type {
 } from "./types";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://tube-agent-api.fly.dev/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 class ApiError extends Error {
   constructor(
@@ -42,19 +42,10 @@ async function apiGet<T>(
   return res.json();
 }
 
-async function apiPost<T>(
-  path: string,
-  body: unknown,
-  token?: string,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
+async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -72,8 +63,8 @@ export const api = {
         limit: String(limit),
       }),
     get: (handle: string) => apiGet<ChannelResponse>(`/channels/${handle}`),
-    create: (data: ChannelCreateRequest, token: string) =>
-      apiPost<JobResponse>("/channels", data, token),
+    create: (data: ChannelCreateRequest) =>
+      apiPost<JobResponse>("/channels", data),
   },
   videos: {
     list: (

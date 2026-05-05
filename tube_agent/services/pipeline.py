@@ -1,4 +1,4 @@
-"""Pipeline orchestration - shared logic for CLI and Celery tasks."""
+"""Pipeline orchestration - shared logic for CLI and API background tasks."""
 
 import hashlib
 import json

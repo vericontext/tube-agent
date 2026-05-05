@@ -1,6 +1,19 @@
 """Tests for channel API endpoints."""
 
+import pytest
+
 from tests.conftest import SAMPLE_CHANNEL
+
+
+@pytest.fixture
+def stub_pipeline(monkeypatch):
+    """Replace the pipeline runner so POST /channels doesn't hit YouTube/Gemini."""
+    from tube_agent.api.routes import channels as channels_route
+
+    def _fake(*, handle, **kwargs):
+        return {"channel_id": f"UC_{handle}", "handle": handle, "video_count": 0}
+
+    monkeypatch.setattr(channels_route, "run_full_pipeline", _fake)
 
 
 class TestListChannels:
@@ -37,14 +50,9 @@ class TestGetChannel:
 
 
 class TestCreateChannel:
-    def test_no_auth(self, client):
+    def test_creates_job(self, client, stub_pipeline):
         resp = client.post("/api/v1/channels", json={"handle": "test"})
-        assert resp.status_code == 401
-
-    def test_invalid_token(self, client):
-        resp = client.post(
-            "/api/v1/channels",
-            json={"handle": "test"},
-            headers={"Authorization": "Bearer invalid.token.here"},
-        )
-        assert resp.status_code == 401
+        assert resp.status_code == 202
+        data = resp.json()
+        assert "id" in data
+        assert data["job_type"] == "full_pipeline"

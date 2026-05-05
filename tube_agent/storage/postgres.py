@@ -1,4 +1,10 @@
-"""PostgreSQL storage backend using SQLAlchemy."""
+"""SQLAlchemy ORM storage backend.
+
+Despite the module/class name, this works with any SQLAlchemy URL — SQLite
+(the default) and Postgres are both supported. The ``database_url`` setting
+controls which driver is used. Postgres requires installing
+``psycopg2-binary`` separately; SQLite uses the stdlib driver.
+"""
 
 import uuid
 from datetime import datetime, timezone

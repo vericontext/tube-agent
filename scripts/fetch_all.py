@@ -1,11 +1,10 @@
 """CLI orchestrator for fetching all YouTube channel data."""
 
 import argparse
-import sys
 
 from tube_agent.services.pipeline import run_full_pipeline
 from tube_agent.storage.local import LocalStorage
-from tube_agent.storage.composite import CompositeStorage
+from tube_agent.storage.postgres import PostgresStorage
 from tube_agent.config import get_settings
 
 
@@ -36,23 +35,11 @@ def main():
     handle = args.handle.lstrip("@")
     settings = get_settings()
 
-    local = LocalStorage()
-    secondaries = []
-
-    if settings.database_url.startswith("postgresql"):
-        from tube_agent.storage.postgres import PostgresStorage
-        secondaries.append(PostgresStorage(settings.database_url))
-
-    if settings.r2_endpoint and settings.r2_access_key:
-        from tube_agent.storage.r2 import R2Storage
-        secondaries.append(R2Storage(
-            endpoint_url=settings.r2_endpoint,
-            access_key=settings.r2_access_key,
-            secret_key=settings.r2_secret_key,
-            bucket=settings.r2_bucket,
-        ))
-
-    storage = CompositeStorage(local, *secondaries) if secondaries else local
+    if settings.database_url.startswith(("postgresql", "sqlite")):
+        storage = PostgresStorage(settings.database_url)
+        storage.create_tables()
+    else:
+        storage = LocalStorage()
 
     run_full_pipeline(
         handle=handle,

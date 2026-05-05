@@ -213,24 +213,12 @@ Below is a detailed breakdown of what happens at each stage.
 
 ## Storage Backends
 
-Data flows through a storage abstraction layer. Multiple backends can be active simultaneously via `CompositeStorage`:
+Data flows through a storage abstraction layer:
 
 | Backend | Primary Use | When Active |
 |---------|------------|-------------|
-| **LocalStorage** | JSON files on disk | Always (CLI mode) |
-| **PostgresStorage** | SQLAlchemy ORM | When `DATABASE_URL` starts with `postgresql` |
-| **R2Storage** | Cloudflare R2 (S3-compatible) | When `R2_ENDPOINT` and `R2_ACCESS_KEY` are set |
-
-With `CompositeStorage`, writes propagate to all backends. Reads come from the primary only. If a secondary backend fails, the pipeline continues without interruption.
-
-**R2 key structure**:
-```
-channels/{handle}/channel.json
-channels/{handle}/videos.json
-channels/{handle}/comments/{videoId}.json
-channels/{handle}/summaries/{videoId}.json
-channels/{handle}/reports/{report_type}.md
-```
+| **LocalStorage** | JSON files on disk | CLI default when `DATABASE_URL` is unset |
+| **PostgresStorage** | SQLAlchemy ORM (works with SQLite or Postgres) | When `DATABASE_URL` starts with `sqlite` or `postgresql` (SQLite is the default) |
 
 ---
 
@@ -269,18 +257,16 @@ channels/{handle}/reports/{report_type}.md
 ## API Server Mode
 
 ```bash
-# Local
 .venv/bin/tube-api --reload
-
-# Docker (API + PostgreSQL + Redis + Celery worker)
-docker-compose up
 ```
+
+The pipeline runs in-process via FastAPI `BackgroundTasks`; no Redis or Celery worker required. Data is persisted to `./tube_agent.db` (SQLite) by default — override with `DATABASE_URL` to point at Postgres.
 
 ### Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/channels` | Start channel analysis pipeline (async via Celery) |
+| POST | `/api/v1/channels` | Start channel analysis pipeline (runs in background) |
 | GET | `/api/v1/channels` | List channels |
 | GET | `/api/v1/channels/{handle}` | Channel details |
 | GET | `/api/v1/channels/{handle}/videos` | Video list (sort/filter/paginate) |
@@ -313,16 +299,13 @@ tube_agent/
   services/
     youtube.py          YouTube Data API v3 client (httpx)
     gemini.py           Gemini API client (multimodal video analysis)
-    pipeline.py         Pipeline orchestration (shared by CLI and Celery)
+    pipeline.py         Pipeline orchestration (shared by CLI and API)
     report.py           Channel report generation
   storage/
     base.py             StorageBackend ABC
     local.py            JSON file storage
-    postgres.py         PostgreSQL via SQLAlchemy
-    r2.py               Cloudflare R2 (S3-compatible)
-    composite.py        Multi-backend writer
-  api/                  FastAPI endpoints
-  tasks/                Celery async task definitions
+    postgres.py         SQLAlchemy ORM (SQLite or Postgres)
+  api/                  FastAPI endpoints (BackgroundTasks-based)
   migrations/           JSON → DB migration scripts
 
 data/{handle}/

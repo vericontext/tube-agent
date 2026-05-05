@@ -1,4 +1,4 @@
-"""Migrate existing JSON file data to PostgreSQL.
+"""Migrate existing JSON file data into the SQLAlchemy-backed database (SQLite by default).
 
 Usage:
     python -m tube_agent.migrations.migrate_json [--handle HANDLE] [--all]
@@ -25,7 +25,7 @@ def load_json(path: Path) -> dict | list | None:
 
 
 def migrate_channel(handle: str, storage: PostgresStorage) -> dict | None:
-    """Migrate a single channel's data from JSON files to PostgreSQL."""
+    """Migrate a single channel's data from JSON files into the database."""
     data_dir = BASE_DIR / "data" / handle
     if not data_dir.exists():
         print(f"  No data found for @{handle}")
@@ -113,7 +113,7 @@ def migrate_channel(handle: str, storage: PostgresStorage) -> dict | None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Migrate JSON data to PostgreSQL")
+    parser = argparse.ArgumentParser(description="Migrate JSON data to the SQL database (SQLite by default)")
     parser.add_argument("--handle", help="Specific channel handle to migrate")
     parser.add_argument("--all", action="store_true", help="Migrate all channels")
     args = parser.parse_args()
