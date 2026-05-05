@@ -243,6 +243,46 @@ def fetch_transcripts(
     return results
 
 
+def embed_transcripts(
+    storage: StorageBackend,
+    embedder,
+    channel_id: str | None = None,
+    batch_size: int = 64,
+) -> int:
+    """Generate embeddings for any transcript segments missing one for this model.
+
+    Skips segments already embedded for the same model. Embeddings are
+    L2-normalised and persisted as float32 BLOBs alongside the model identifier.
+    """
+    pending = storage.list_unembedded_segments(embedder.name, channel_id=channel_id)
+    if not pending:
+        logger.info("Embeddings up to date for model %s", embedder.name)
+        return 0
+
+    logger.info(
+        "Embedding %d transcript segments with %s (dim=%d)...",
+        len(pending),
+        embedder.name,
+        embedder.dimension,
+    )
+
+    embedded = 0
+    for start in range(0, len(pending), batch_size):
+        batch = pending[start : start + batch_size]
+        texts = [seg["text"] for seg in batch]
+        vectors = embedder.embed(texts)
+        items = [
+            (seg["id"], vectors[i].astype("float32").tolist())
+            for i, seg in enumerate(batch)
+        ]
+        storage.save_embeddings(items, embedder.name, embedder.dimension)
+        embedded += len(batch)
+        if (start + batch_size) % (batch_size * 8) == 0 or embedded == len(pending):
+            logger.info("  Embedding progress: %d/%d", embedded, len(pending))
+    logger.info("  Embeddings: %d new", embedded)
+    return embedded
+
+
 def fetch_summaries(
     videos: list[dict],
     storage: StorageBackend,
@@ -333,6 +373,8 @@ def run_full_pipeline(
     media_resolution: str = "low",
     skip_report: bool = False,
     max_workers: int = 5,
+    skip_embeddings: bool = False,
+    embedder=None,
 ) -> dict:
     """Run the full data collection pipeline."""
     # Clean up stale YouTube API data (30-day retention policy)
@@ -358,6 +400,15 @@ def run_full_pipeline(
         if fetch_transcript_data:
             transcript_results = fetch_transcripts(videos, storage, transcript_languages, max_workers=max_workers)
 
+        embedded_count = 0
+        if fetch_transcript_data and not skip_embeddings and embedder is not None:
+            try:
+                embedded_count = embed_transcripts(
+                    storage, embedder, channel_id=channel_data["id"]
+                )
+            except Exception as e:
+                logger.warning("Embedding stage failed (non-fatal): %s", e)
+
         if not skip_comments:
             fetch_comments(yt_client, videos, storage)
 
@@ -381,6 +432,7 @@ def run_full_pipeline(
             "handle": handle,
             "video_count": len(videos),
             "transcript_count": sum(1 for ok in transcript_results.values() if ok),
+            "embedded_count": embedded_count,
             "report_generated": report_generated,
             "quota": yt_client.quota.summary(),
         }

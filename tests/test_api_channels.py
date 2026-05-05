@@ -7,13 +7,17 @@ from tests.conftest import SAMPLE_CHANNEL
 
 @pytest.fixture
 def stub_pipeline(monkeypatch):
-    """Replace the pipeline runner so POST /channels doesn't hit YouTube/Gemini."""
+    """Replace the pipeline runner so POST /channels doesn't hit YouTube/Gemini/embedder."""
     from tube_agent.api.routes import channels as channels_route
 
     def _fake(*, handle, **kwargs):
         return {"channel_id": f"UC_{handle}", "handle": handle, "video_count": 0}
 
+    def _fake_provider():
+        raise RuntimeError("disabled in tests")
+
     monkeypatch.setattr(channels_route, "run_full_pipeline", _fake)
+    monkeypatch.setattr(channels_route, "get_default_provider", _fake_provider)
 
 
 class TestListChannels:

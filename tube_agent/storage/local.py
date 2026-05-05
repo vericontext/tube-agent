@@ -321,6 +321,27 @@ class LocalStorage(StorageBackend):
                             return results
         return results
 
+    # --- Embeddings (LocalStorage does not support semantic search) ---
+
+    def list_unembedded_segments(
+        self, model_name: str, channel_id: str | None = None, limit: int | None = None
+    ) -> list[dict]:
+        return []
+
+    def save_embeddings(
+        self, items: list[tuple[int, list[float] | bytes]], model_name: str, dimension: int
+    ) -> int:
+        return 0
+
+    def search_semantic(
+        self,
+        query_vector: list[float],
+        model_name: str,
+        limit: int = 20,
+        channel_id: str | None = None,
+    ) -> list[dict]:
+        return []
+
     # --- Reports ---
 
     def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:

@@ -115,6 +115,33 @@ class StorageBackend(ABC):
         """Search transcript segments."""
         ...
 
+    # --- Embeddings ---
+
+    @abstractmethod
+    def list_unembedded_segments(
+        self, model_name: str, channel_id: str | None = None, limit: int | None = None
+    ) -> list[dict]:
+        """Return transcript segments that don't have an embedding for the given model."""
+        ...
+
+    @abstractmethod
+    def save_embeddings(
+        self, items: list[tuple[int, "list[float] | bytes"]], model_name: str, dimension: int
+    ) -> int:
+        """Save embeddings for a batch of (segment_id, vector) pairs. Returns count saved."""
+        ...
+
+    @abstractmethod
+    def search_semantic(
+        self,
+        query_vector: "list[float]",
+        model_name: str,
+        limit: int = 20,
+        channel_id: str | None = None,
+    ) -> list[dict]:
+        """Cosine-similarity search over stored embeddings; returns top-k segments with metadata."""
+        ...
+
     # --- Reports ---
 
     @abstractmethod

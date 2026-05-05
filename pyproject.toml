@@ -16,6 +16,9 @@ dependencies = [
     # Validation & config
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
+    # Embeddings (local default; Gemini provider uses google-genai already listed)
+    "fastembed>=0.8",
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]

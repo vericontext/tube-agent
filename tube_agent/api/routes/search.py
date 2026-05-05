@@ -1,13 +1,18 @@
 """Search API routes."""
 
-from fastapi import APIRouter, Depends, Query as QueryParam
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query as QueryParam
 
 from tube_agent.api.deps import get_storage
 from tube_agent.models.schemas import SearchResponse, SearchResult
+from tube_agent.services.embeddings import get_default_provider
 from tube_agent.storage.postgres import PostgresStorage
 from tube_agent.models.database import Channel, Video, VideoSummary
 
 from sqlalchemy import select, or_, cast, String
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -86,6 +91,54 @@ def search(
                 ))
 
     return SearchResponse(results=results[:limit], total=len(results), query=q)
+
+
+@router.get("/semantic", response_model=SearchResponse)
+def search_semantic(
+    q: str = QueryParam(..., min_length=1, description="Natural-language query"),
+    limit: int = QueryParam(20, ge=1, le=100),
+    channel: str | None = QueryParam(None, description="Restrict to a channel handle"),
+    storage: PostgresStorage = Depends(get_storage),
+):
+    """Semantic transcript search via cached embedding model + cosine similarity."""
+    try:
+        embedder = get_default_provider()
+    except Exception as exc:
+        logger.error("Embedding provider unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Embedding model unavailable") from exc
+
+    channel_id: str | None = None
+    if channel:
+        ch = storage.get_channel(channel.lstrip("@"))
+        if not ch:
+            raise HTTPException(status_code=404, detail=f"Channel @{channel} not found")
+        channel_id = ch["id"]
+
+    query_vector = embedder.embed([q])[0].tolist()
+    hits = storage.search_semantic(
+        query_vector=query_vector,
+        model_name=embedder.name,
+        limit=limit,
+        channel_id=channel_id,
+    )
+
+    results = [
+        SearchResult(
+            type="transcript",
+            video_id=hit["video_id"],
+            title=hit.get("video_title") or hit["video_id"],
+            snippet=hit.get("text", "")[:300],
+            score=hit.get("score", 0.0),
+            channel_handle=hit.get("channel_handle"),
+            video_title=hit.get("video_title"),
+            start_seconds=hit.get("start_seconds"),
+            timestamp=_format_timestamp(hit.get("start_seconds")),
+            youtube_url=_youtube_url(hit["video_id"], hit.get("start_seconds")),
+            language=hit.get("language"),
+        )
+        for hit in hits
+    ]
+    return SearchResponse(results=results, total=len(results), query=q)
 
 
 def _format_timestamp(seconds: float | int | None) -> str:

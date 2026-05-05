@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     default_media_resolution: str = "low"
     default_max_videos: int = 100
 
+    # Embeddings
+    embedding_provider: str = "local"  # local | gemini
+    embedding_model: str = ""  # empty = provider default
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

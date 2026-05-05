@@ -30,6 +30,8 @@ def main():
                         default="low", help="Gemini media resolution (default: low)")
     parser.add_argument("--workers", type=int, default=5,
                         help="Concurrent Gemini workers (default: 5)")
+    parser.add_argument("--skip-embeddings", action="store_true",
+                        help="Skip transcript embedding generation")
     args = parser.parse_args()
 
     handle = args.handle.lstrip("@")
@@ -41,6 +43,15 @@ def main():
     else:
         storage = LocalStorage()
 
+    embedder = None
+    fetch_transcript_data = not args.skip_transcripts
+    if fetch_transcript_data and not args.skip_embeddings:
+        from tube_agent.services.embeddings import get_default_provider
+        try:
+            embedder = get_default_provider()
+        except Exception as e:
+            print(f"warning: embedder unavailable, transcripts will not be embedded: {e}")
+
     run_full_pipeline(
         handle=handle,
         storage=storage,
@@ -49,12 +60,14 @@ def main():
         max_videos=args.max_videos,
         skip_comments=(not args.with_comments) or args.skip_comments,
         skip_summaries=(not args.with_summaries) or args.skip_summaries,
-        fetch_transcript_data=not args.skip_transcripts,
+        fetch_transcript_data=fetch_transcript_data,
         transcript_languages=[lang.strip() for lang in args.transcript_languages.split(",") if lang.strip()],
         summary_max=args.summary_max,
         media_resolution=args.media_resolution,
         skip_report=args.skip_report,
         max_workers=args.workers,
+        skip_embeddings=args.skip_embeddings,
+        embedder=embedder,
     )
 
 

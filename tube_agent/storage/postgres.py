@@ -34,6 +34,7 @@ from tube_agent.models.database import (
     SummarySection,
     SummaryBullet,
     TranscriptSegment,
+    TranscriptEmbedding,
     ChannelReport,
     Job,
 )
@@ -303,6 +304,134 @@ class PostgresStorage(StorageBackend):
             if language:
                 query = query.where(TranscriptSegment.language == language)
             return session.execute(query).scalar() > 0
+
+    def list_unembedded_segments(
+        self, model_name: str, channel_id: str | None = None, limit: int | None = None
+    ) -> list[dict]:
+        with self.get_session() as session:
+            query = (
+                select(TranscriptSegment.id, TranscriptSegment.text, TranscriptSegment.video_id)
+                .outerjoin(
+                    TranscriptEmbedding,
+                    (TranscriptEmbedding.segment_id == TranscriptSegment.id)
+                    & (TranscriptEmbedding.model_name == model_name),
+                )
+                .where(TranscriptEmbedding.segment_id.is_(None))
+            )
+            if channel_id:
+                query = query.join(Video, Video.video_id == TranscriptSegment.video_id).where(
+                    Video.channel_id == channel_id
+                )
+            query = query.order_by(TranscriptSegment.id)
+            if limit:
+                query = query.limit(limit)
+            return [
+                {"id": row.id, "text": row.text, "video_id": row.video_id}
+                for row in session.execute(query).all()
+            ]
+
+    def save_embeddings(
+        self, items: list[tuple[int, list[float] | bytes]], model_name: str, dimension: int
+    ) -> int:
+        if not items:
+            return 0
+        import numpy as np
+
+        with self.get_session() as session:
+            for segment_id, vector in items:
+                if isinstance(vector, (bytes, bytearray)):
+                    blob = bytes(vector)
+                else:
+                    blob = np.asarray(vector, dtype=np.float32).tobytes()
+                existing = session.get(TranscriptEmbedding, (segment_id, model_name))
+                if existing:
+                    existing.embedding = blob
+                    existing.dimension = dimension
+                else:
+                    session.add(TranscriptEmbedding(
+                        segment_id=segment_id,
+                        model_name=model_name,
+                        dimension=dimension,
+                        embedding=blob,
+                    ))
+            session.commit()
+            return len(items)
+
+    def search_semantic(
+        self,
+        query_vector: list[float],
+        model_name: str,
+        limit: int = 20,
+        channel_id: str | None = None,
+    ) -> list[dict]:
+        import numpy as np
+
+        with self.get_session() as session:
+            query = (
+                select(
+                    TranscriptEmbedding.segment_id,
+                    TranscriptEmbedding.embedding,
+                    TranscriptEmbedding.dimension,
+                )
+                .where(TranscriptEmbedding.model_name == model_name)
+            )
+            if channel_id:
+                query = (
+                    query.join(TranscriptSegment, TranscriptSegment.id == TranscriptEmbedding.segment_id)
+                    .join(Video, Video.video_id == TranscriptSegment.video_id)
+                    .where(Video.channel_id == channel_id)
+                )
+            rows = session.execute(query).all()
+            if not rows:
+                return []
+
+            segment_ids = np.array([r.segment_id for r in rows], dtype=np.int64)
+            dim = rows[0].dimension
+            matrix = np.frombuffer(b"".join(r.embedding for r in rows), dtype=np.float32).reshape(
+                len(rows), dim
+            )
+            q = np.asarray(query_vector, dtype=np.float32)
+            q_norm = np.linalg.norm(q)
+            if q_norm > 0:
+                q = q / q_norm
+            scores = matrix @ q
+
+            top_n = min(limit, scores.shape[0])
+            # argpartition gives the top-N unsorted; sort just those
+            top_idx = np.argpartition(-scores, top_n - 1)[:top_n]
+            top_idx = top_idx[np.argsort(-scores[top_idx])]
+            top_segment_ids = [int(segment_ids[i]) for i in top_idx]
+            top_scores = {int(segment_ids[i]): float(scores[i]) for i in top_idx}
+
+            # Hydrate segment + video + channel metadata in a single query
+            meta_rows = session.execute(
+                select(TranscriptSegment, Video, Channel)
+                .join(Video, TranscriptSegment.video_id == Video.video_id)
+                .join(Channel, Video.channel_id == Channel.id)
+                .where(TranscriptSegment.id.in_(top_segment_ids))
+            ).all()
+            meta_by_id = {seg.id: (seg, video, channel) for seg, video, channel in meta_rows}
+
+            results = []
+            for sid in top_segment_ids:
+                hit = meta_by_id.get(sid)
+                if not hit:
+                    continue
+                segment, video, channel = hit
+                results.append({
+                    "segment_id": sid,
+                    "video_id": segment.video_id,
+                    "channel_id": video.channel_id,
+                    "channel_handle": channel.handle,
+                    "video_title": video.title,
+                    "language": segment.language,
+                    "source": segment.source,
+                    "start_seconds": segment.start_seconds,
+                    "end_seconds": segment.end_seconds,
+                    "text": segment.text,
+                    "score": top_scores[sid],
+                })
+            return results
 
     def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
         pattern = f"%{q}%"

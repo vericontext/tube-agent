@@ -12,6 +12,7 @@ from tube_agent.models.schemas import (
     ChannelListResponse,
     JobResponse,
 )
+from tube_agent.services.embeddings import get_default_provider
 from tube_agent.services.pipeline import run_full_pipeline
 from tube_agent.storage.postgres import PostgresStorage
 
@@ -25,6 +26,13 @@ def _run_pipeline_job(job_id: str, handle: str, body: ChannelCreate, storage: Po
     settings = get_settings()
     storage.update_job(job_id, {"status": "running"})
     try:
+        embedder = None
+        if body.fetch_transcripts:
+            try:
+                embedder = get_default_provider()
+            except Exception as e:
+                logger.warning("Embedder unavailable, transcripts will not be embedded: %s", e)
+
         result = run_full_pipeline(
             handle=handle,
             storage=storage,
@@ -37,6 +45,7 @@ def _run_pipeline_job(job_id: str, handle: str, body: ChannelCreate, storage: Po
             transcript_languages=body.transcript_languages,
             summary_max=body.summary_max,
             media_resolution=body.media_resolution,
+            embedder=embedder,
         )
         storage.update_job(job_id, {
             "status": "completed",

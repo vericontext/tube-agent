@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     BigInteger,
     Float,
+    LargeBinary,
     Text,
     DateTime,
     ForeignKey,
@@ -200,10 +201,28 @@ class TranscriptSegment(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     video = relationship("Video", back_populates="transcript_segments")
+    embeddings = relationship("TranscriptEmbedding", back_populates="segment",
+                              cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_transcript_segments_video_language", "video_id", "language"),
         Index("ix_transcript_segments_video_order", "video_id", "sort_order"),
+    )
+
+
+class TranscriptEmbedding(Base):
+    __tablename__ = "transcript_embeddings"
+
+    segment_id = Column(Integer, ForeignKey("transcript_segments.id"), primary_key=True)
+    model_name = Column(String, primary_key=True)
+    dimension = Column(Integer, nullable=False)
+    embedding = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    segment = relationship("TranscriptSegment", back_populates="embeddings")
+
+    __table_args__ = (
+        Index("ix_transcript_embeddings_model", "model_name"),
     )
 
 
