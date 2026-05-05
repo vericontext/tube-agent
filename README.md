@@ -4,6 +4,10 @@ Local-first desktop app for indexing YouTube channel transcripts and searching t
 
 The whole stack runs locally: SQLite for storage, fastembed (ONNX) for embeddings, yt-dlp for transcript fetch. No cloud accounts, no auth, no recurring infrastructure cost.
 
+![Channels list](docs/screenshots/03-channels-list.png)
+
+![Channel detail with video stats](docs/screenshots/04-channel-detail.png)
+
 ## Setup
 
 ```bash
