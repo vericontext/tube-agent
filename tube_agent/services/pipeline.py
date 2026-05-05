@@ -161,7 +161,8 @@ def fetch_transcripts(
     videos: list[dict],
     storage: StorageBackend,
     languages: list[str] | None = None,
-    max_workers: int = 5,
+    max_workers: int = 1,
+    failure_notes: dict[str, str] | None = None,
 ) -> dict[str, bool]:
     """Fetch caption-backed transcript segments for each video."""
     from tube_agent.services.transcripts import TranscriptExtractor, TranscriptUnavailableError
@@ -212,32 +213,64 @@ def fetch_transcripts(
         except Exception as e:
             return vid, False, f"error: {e}"
 
+    def _record_result(vid: str, ok: bool, note: str | None) -> bool:
+        nonlocal success_count, unavailable_count
+        results[vid] = ok
+        if ok:
+            success_count += 1
+        else:
+            unavailable_count += 1
+            if note and failure_notes is not None:
+                failure_notes[vid] = note
+            if note and note.startswith("error"):
+                logger.warning("  Transcript %s: %s", vid, note)
+            elif note:
+                logger.info("  Transcript %s: %s", vid, note)
+        return bool(note and ("HTTP 429" in note or "rate-limited" in note))
+
+    def _log_progress(completed: int, total: int) -> None:
+        if completed % 10 == 0 or completed == total:
+            logger.info(
+                "  Transcript progress: %d/%d (%d OK, %d skipped, %d unavailable)",
+                completed,
+                total,
+                success_count,
+                skipped_count,
+                unavailable_count,
+            )
+
     completed = 0
     total = len(to_process)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_process_one, v): v for v in to_process}
-        for future in as_completed(futures):
-            vid, ok, note = future.result()
-            results[vid] = ok
-            if ok:
-                success_count += 1
-            else:
-                unavailable_count += 1
-                if note and note.startswith("error"):
-                    logger.warning("  Transcript %s: %s", vid, note)
-                elif note:
-                    logger.info("  Transcript %s: %s", vid, note)
-            completed += 1
-            if completed % 10 == 0 or completed == total:
-                logger.info(
-                    "  Transcript progress: %d/%d (%d OK, %d skipped, %d unavailable)",
-                    completed,
-                    total,
-                    success_count,
-                    skipped_count,
-                    unavailable_count,
+    if max_workers <= 1:
+        for index, video in enumerate(to_process, 1):
+            vid, ok, note = _process_one(video)
+            completed = index
+            rate_limited = _record_result(vid, ok, note)
+            _log_progress(completed, total)
+            if rate_limited:
+                skipped_note = "unavailable: YouTube transcript endpoint rate-limited this device/network (HTTP 429)"
+                for remaining in to_process[index:]:
+                    remaining_id = remaining["videoId"]
+                    results[remaining_id] = False
+                    unavailable_count += 1
+                    if failure_notes is not None:
+                        failure_notes[remaining_id] = skipped_note
+                logger.warning(
+                    "  Stopped transcript fetch after YouTube rate limit; %d videos left unprocessed",
+                    total - index,
                 )
+                break
+            if index < total:
+                time.sleep(0.75)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_process_one, v): v for v in to_process}
+            for future in as_completed(futures):
+                vid, ok, note = future.result()
+                _record_result(vid, ok, note)
+                completed += 1
+                _log_progress(completed, total)
 
     logger.info("  Transcripts: %d new, %d skipped, %d unavailable", success_count, skipped_count, unavailable_count)
     return results
@@ -422,7 +455,7 @@ def run_full_pipeline(
     summary_mode: str = "transcript",
     summary_language: str = "en",
     skip_report: bool = False,
-    max_workers: int = 5,
+    max_workers: int = 1,
     skip_embeddings: bool = False,
     embedder=None,
 ) -> dict:
@@ -447,8 +480,15 @@ def run_full_pipeline(
         videos = fetch_videos(yt_client, channel_data, max_videos, storage)
 
         transcript_results = {}
+        transcript_failures: dict[str, str] = {}
         if fetch_transcript_data:
-            transcript_results = fetch_transcripts(videos, storage, transcript_languages, max_workers=max_workers)
+            transcript_results = fetch_transcripts(
+                videos,
+                storage,
+                transcript_languages,
+                max_workers=max_workers,
+                failure_notes=transcript_failures,
+            )
 
         embedded_count = 0
         if fetch_transcript_data and not skip_embeddings and embedder is not None:
@@ -494,6 +534,8 @@ def run_full_pipeline(
             "handle": handle,
             "video_count": len(videos),
             "transcript_count": sum(1 for ok in transcript_results.values() if ok),
+            "transcript_failure_count": len(transcript_failures),
+            "transcript_failures": dict(list(transcript_failures.items())[:20]),
             "summary_count": sum(1 for ok in summary_results.values() if ok),
             "embedded_count": embedded_count,
             "report_generated": report_generated,

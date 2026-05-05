@@ -1,6 +1,8 @@
 """Tests for video and summary API endpoints."""
 
+from tests.conftest import SAMPLE_TRANSCRIPT
 from tests.test_summaries import _summary_json
+from tube_agent.services.transcripts import TranscriptResult, TranscriptUnavailableError
 
 
 class _Settings:
@@ -17,6 +19,19 @@ class _FakeGemini:
 
     def generate_text(self, prompt):
         return _summary_json()
+
+
+class _FakeTranscriptExtractor:
+    def __init__(self, languages):
+        self.languages = languages
+
+    def extract(self, video_id):
+        return TranscriptResult(
+            video_id=video_id,
+            language="en",
+            source="manual",
+            segments=SAMPLE_TRANSCRIPT,
+        )
 
 
 class TestListVideos:
@@ -110,3 +125,44 @@ class TestGetVideoTranscript:
         resp = seeded_client.get("/api/v1/channels/testchannel/videos/vid_2/transcript")
         assert resp.status_code == 200
         assert resp.json()["segments"] == []
+
+
+class TestFetchVideoTranscript:
+    def test_fetch_and_store_transcript(self, seeded_client, monkeypatch):
+        from tube_agent.api.routes import videos as videos_route
+
+        monkeypatch.setattr(videos_route, "TranscriptExtractor", _FakeTranscriptExtractor)
+
+        resp = seeded_client.post(
+            "/api/v1/channels/testchannel/videos/vid_2/transcript",
+            json={"languages": ["ko", "en"], "embed": False},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["video_id"] == "vid_2"
+        assert data["language"] == "en"
+        assert len(data["segments"]) == 2
+
+        stored = seeded_client.get("/api/v1/channels/testchannel/videos/vid_2/transcript")
+        assert len(stored.json()["segments"]) == 2
+
+    def test_fetch_transcript_surfaces_rate_limit(self, seeded_client, monkeypatch):
+        from tube_agent.api.routes import videos as videos_route
+
+        class RateLimitedExtractor:
+            def __init__(self, languages):
+                self.languages = languages
+
+            def extract(self, video_id):
+                raise TranscriptUnavailableError("YouTube transcript endpoint rate-limited (HTTP 429)")
+
+        monkeypatch.setattr(videos_route, "TranscriptExtractor", RateLimitedExtractor)
+
+        resp = seeded_client.post(
+            "/api/v1/channels/testchannel/videos/vid_2/transcript",
+            json={"embed": False},
+        )
+
+        assert resp.status_code == 429
+        assert "HTTP 429" in resp.json()["detail"]

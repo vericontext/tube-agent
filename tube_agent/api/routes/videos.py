@@ -1,5 +1,7 @@
 """Video and Summary API routes."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from tube_agent.config import get_settings
@@ -12,11 +14,17 @@ from tube_agent.models.schemas import (
     SummaryBulletResponse,
     SummaryGenerateRequest,
     TranscriptResponse,
+    TranscriptFetchRequest,
     TranscriptSegmentResponse,
 )
+from tube_agent.services.embeddings import get_default_provider
 from tube_agent.services.gemini import GeminiClient
+from tube_agent.services.pipeline import embed_transcripts
 from tube_agent.services.summaries import SummaryGenerationError, generate_and_save_transcript_summary
+from tube_agent.services.transcripts import TranscriptExtractor, TranscriptUnavailableError
 from tube_agent.storage.postgres import PostgresStorage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["videos"])
 
@@ -163,5 +171,50 @@ def get_video_transcript(
     return TranscriptResponse(
         video_id=video_id,
         language=response_language,
+        segments=[TranscriptSegmentResponse(**s) for s in segments],
+    )
+
+
+@router.post(
+    "/channels/{handle}/videos/{video_id}/transcript",
+    response_model=TranscriptResponse,
+)
+def fetch_video_transcript(
+    handle: str,
+    video_id: str,
+    body: TranscriptFetchRequest | None = None,
+    storage: PostgresStorage = Depends(get_storage),
+):
+    """Fetch or retry transcript capture for one stored video."""
+    body = body or TranscriptFetchRequest()
+    video = storage.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    languages = body.languages or ["ko", "en"]
+    try:
+        transcript = TranscriptExtractor(languages).extract(video_id)
+    except TranscriptUnavailableError as e:
+        status_code = 429 if "HTTP 429" in str(e) or "rate-limited" in str(e) else 400
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
+
+    storage.save_transcript_segments(
+        transcript.video_id,
+        transcript.language,
+        transcript.source,
+        transcript.segments,
+    )
+
+    if body.embed:
+        try:
+            embedder = get_default_provider()
+            embed_transcripts(storage, embedder, channel_id=video.get("channel_id"))
+        except Exception as e:
+            logger.warning("Embedding after transcript retry failed for %s: %s", video_id, e)
+
+    segments = storage.get_transcript(video_id, transcript.language)
+    return TranscriptResponse(
+        video_id=video_id,
+        language=transcript.language,
         segments=[TranscriptSegmentResponse(**s) for s in segments],
     )

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, RefreshCw } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,14 @@ export function VideoDetailPage() {
     },
   });
 
+  const transcriptMutation = useMutation({
+    mutationFn: () => api.videos.fetchTranscript(handle!, videoId!),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["transcript", videoId], data);
+      queryClient.invalidateQueries({ queryKey: ["transcript", videoId] });
+    },
+  });
+
   const segments = transcriptQuery.data?.segments ?? [];
 
   const focusIndex = useMemo(() => {
@@ -67,20 +76,31 @@ export function VideoDetailPage() {
   if (!handle || !videoId) return null;
 
   const video = videoQuery.data;
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}${
+    focusSeconds > 0 ? `&t=${Math.floor(focusSeconds)}s` : ""
+  }`;
 
   return (
     <div className="container mx-auto px-6 py-10 max-w-5xl space-y-6">
       {video && (
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight leading-tight">{video.title}</h1>
-          <div className="text-xs text-muted-foreground flex gap-4">
-            <span>@{handle}</span>
-            <span>{formatNumber(video.view_count)} views</span>
-            <span>{formatNumber(video.like_count)} likes</span>
-            {video.published_at && (
-              <span>{new Date(video.published_at).toLocaleDateString()}</span>
-            )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold tracking-tight leading-tight">{video.title}</h1>
+            <div className="text-xs text-muted-foreground flex flex-wrap gap-4">
+              <span>@{handle}</span>
+              <span>{formatNumber(video.view_count)} views</span>
+              <span>{formatNumber(video.like_count)} likes</span>
+              {video.published_at && (
+                <span>{new Date(video.published_at).toLocaleDateString()}</span>
+              )}
+            </div>
           </div>
+          <Button asChild variant="outline" size="sm">
+            <a href={youtubeUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" />
+              Open on YouTube
+            </a>
+          </Button>
         </div>
       )}
 
@@ -90,6 +110,7 @@ export function VideoDetailPage() {
           src={embedSrc}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
           className="w-full h-full"
         />
       </div>
@@ -145,14 +166,35 @@ export function VideoDetailPage() {
                 !summaryQuery.isLoading && (
                   <div className="rounded-md border border-dashed px-4 py-8 text-center space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      No summary has been generated for this video yet.
+                      {segments.length === 0
+                        ? "Capture a transcript before generating a summary."
+                        : "No summary has been generated for this video yet."}
                     </p>
-                    <Button
-                      onClick={() => summaryMutation.mutate()}
-                      disabled={summaryMutation.isPending || segments.length === 0}
-                    >
-                      {summaryMutation.isPending ? "Generating…" : "Generate summary"}
-                    </Button>
+                    <div className="flex justify-center gap-2">
+                      {segments.length === 0 && (
+                        <Button
+                          variant="outline"
+                          onClick={() => transcriptMutation.mutate()}
+                          disabled={transcriptMutation.isPending}
+                        >
+                          <RefreshCw className={transcriptMutation.isPending ? "size-4 animate-spin" : "size-4"} />
+                          {transcriptMutation.isPending ? "Fetching…" : "Fetch transcript"}
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => summaryMutation.mutate()}
+                        disabled={summaryMutation.isPending || segments.length === 0}
+                      >
+                        {summaryMutation.isPending ? "Generating…" : "Generate summary"}
+                      </Button>
+                    </div>
+                    {transcriptMutation.isError && (
+                      <p className="text-xs text-destructive">
+                        {transcriptMutation.error instanceof Error
+                          ? transcriptMutation.error.message
+                          : "Transcript fetch failed"}
+                      </p>
+                    )}
                     {summaryMutation.isError && (
                       <p className="text-xs text-destructive">
                         {summaryMutation.error instanceof Error
@@ -193,8 +235,23 @@ export function VideoDetailPage() {
                   );
                 })}
                 {segments.length === 0 && !transcriptQuery.isLoading && (
-                  <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No transcript captured for this video.
+                  <div className="px-4 py-10 text-center text-sm text-muted-foreground space-y-3">
+                    <p>No transcript captured for this video.</p>
+                    <Button
+                      variant="outline"
+                      onClick={() => transcriptMutation.mutate()}
+                      disabled={transcriptMutation.isPending}
+                    >
+                      <RefreshCw className={transcriptMutation.isPending ? "size-4 animate-spin" : "size-4"} />
+                      {transcriptMutation.isPending ? "Fetching…" : "Fetch transcript"}
+                    </Button>
+                    {transcriptMutation.isError && (
+                      <p className="text-xs text-destructive">
+                        {transcriptMutation.error instanceof Error
+                          ? transcriptMutation.error.message
+                          : "Transcript fetch failed"}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

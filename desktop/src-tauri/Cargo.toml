@@ -1,6 +1,6 @@
 [package]
 name = "tube-agent"
-version = "0.0.2"
+version = "0.0.3"
 description = "Tube Agent — local YouTube transcript indexer + semantic search"
 authors = ["Kiyeon Jeon"]
 edition = "2021"

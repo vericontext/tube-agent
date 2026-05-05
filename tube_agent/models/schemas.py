@@ -167,6 +167,11 @@ class TranscriptResponse(BaseModel):
     segments: list[TranscriptSegmentResponse] = []
 
 
+class TranscriptFetchRequest(BaseModel):
+    languages: list[str] | None = None
+    embed: bool = True
+
+
 # --- Job ---
 
 class JobCreate(BaseModel):

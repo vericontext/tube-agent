@@ -13,9 +13,22 @@ Every release tag must match the desktop app version and have a matching
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-05-06
+
+### Added
+
+- Video detail transcript retry action for videos that were indexed before captions were captured.
+- Job progress now records transcript failure counts and the first failure reasons.
+
 ### Changed
 
 - Future GitHub Actions release workflows publish releases directly instead of leaving them as drafts.
+- Channel indexing fetches transcripts sequentially by default to reduce YouTube caption endpoint rate limiting.
+
+### Fixed
+
+- Allow YouTube embedded player frames in the Tauri content security policy.
+- Surface YouTube transcript HTTP 429 rate limit errors instead of silently showing zero segments.
 
 ## [0.0.2] - 2026-05-06
 

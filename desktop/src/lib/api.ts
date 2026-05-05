@@ -74,7 +74,7 @@ async function get<T>(path: string, params?: Record<string, string | undefined>)
     }
   }
   const res = await fetch(url.toString());
-  if (!res.ok) throw new ApiError(res.status, `GET ${path} failed: ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, await responseError("GET", path, res));
   return res.json();
 }
 
@@ -86,10 +86,22 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new ApiError(res.status, `POST ${path} failed: ${text}`);
+    throw new ApiError(res.status, await responseError("POST", path, res));
   }
   return res.json();
+}
+
+async function responseError(method: string, path: string, res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === "string") return parsed.detail;
+    } catch {
+      return `${method} ${path} failed: ${text}`;
+    }
+  }
+  return `${method} ${path} failed: ${res.statusText}`;
 }
 
 export const api = {
@@ -114,6 +126,11 @@ export const api = {
     getTranscript: (handle: string, videoId: string, language?: string) =>
       get<TranscriptResponse>(`/channels/${handle}/videos/${videoId}/transcript`, {
         language,
+      }),
+    fetchTranscript: (handle: string, videoId: string) =>
+      post<TranscriptResponse>(`/channels/${handle}/videos/${videoId}/transcript`, {
+        languages: ["ko", "en"],
+        embed: true,
       }),
     getSummary: (handle: string, videoId: string) =>
       get<VideoSummaryResponse>(`/channels/${handle}/videos/${videoId}/summary`),

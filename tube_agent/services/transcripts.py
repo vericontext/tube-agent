@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
@@ -28,9 +29,17 @@ class TranscriptUnavailableError(RuntimeError):
 class TranscriptExtractor:
     """Extract caption-backed YouTube transcripts and normalize them into readable chunks."""
 
-    def __init__(self, languages: list[str] | None = None, timeout: float = 20.0):
+    def __init__(
+        self,
+        languages: list[str] | None = None,
+        timeout: float = 20.0,
+        retries: int = 2,
+        retry_backoff: float = 2.0,
+    ):
         self.languages = languages or ["ko", "en"]
         self.timeout = timeout
+        self.retries = retries
+        self.retry_backoff = retry_backoff
 
     def extract(self, video_id: str) -> TranscriptResult:
         info = self._extract_info(video_id)
@@ -99,9 +108,32 @@ class TranscriptExtractor:
 
     def _fetch_track(self, url: str, ext: str) -> list[dict]:
         with httpx.Client(follow_redirects=True, timeout=self.timeout) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            body = response.text
+            for attempt in range(self.retries + 1):
+                try:
+                    response = client.get(url)
+                    response.raise_for_status()
+                    body = response.text
+                    break
+                except httpx.HTTPStatusError as exc:
+                    status_code = exc.response.status_code
+                    if status_code == 429 and attempt < self.retries:
+                        time.sleep(_retry_delay(exc.response, attempt, self.retry_backoff))
+                        continue
+                    if status_code == 429:
+                        raise TranscriptUnavailableError(
+                            "YouTube transcript endpoint rate-limited this device/network (HTTP 429). "
+                            "Try again later or index fewer videos at once."
+                        ) from exc
+                    raise TranscriptUnavailableError(
+                        f"Unable to fetch transcript track (HTTP {status_code})"
+                    ) from exc
+                except httpx.HTTPError as exc:
+                    if attempt < self.retries:
+                        time.sleep(self.retry_backoff * (attempt + 1))
+                        continue
+                    raise TranscriptUnavailableError(f"Unable to fetch transcript track: {exc}") from exc
+            else:
+                raise TranscriptUnavailableError("Unable to fetch transcript track")
         if ext == "json3" or body.lstrip().startswith("{"):
             return _parse_json3(body)
         if ext.startswith("srv") or body.lstrip().startswith("<"):
@@ -134,6 +166,16 @@ def _best_track(tracks: list[dict]) -> dict | None:
     if not usable:
         return None
     return sorted(usable, key=lambda track: preference.get(track.get("ext", ""), 99))[0]
+
+
+def _retry_delay(response: httpx.Response, attempt: int, fallback: float) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(float(retry_after), 60.0)
+        except ValueError:
+            pass
+    return fallback * (attempt + 1)
 
 
 def _parse_json3(body: str) -> list[dict]:
