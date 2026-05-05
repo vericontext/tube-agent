@@ -8,17 +8,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tube_agent.config import get_settings
 from tube_agent.api.deps import get_storage
-from tube_agent.api.routes import channels, videos, jobs, reports, search
+from tube_agent.api.routes import channels, videos, jobs, reports, search, system
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup."""
+    """Create DB tables and kick off the embedding warmup on startup."""
     storage = get_storage()
     storage.create_tables()
     logger.info("Database tables created/verified")
+
+    # Start downloading / loading the embedding model in the background so the
+    # first semantic search request doesn't block waiting on a 220 MB download.
+    system.start_warmup()
     yield
 
 
@@ -58,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix=prefix)
     app.include_router(reports.router, prefix=prefix)
     app.include_router(search.router, prefix=prefix)
+    app.include_router(system.router, prefix=prefix)
 
     @app.get("/health")
     def health():
