@@ -5,6 +5,7 @@ import type {
   VideoListResponse,
   VideoResponse,
   VideoSummaryResponse,
+  TranscriptResponse,
   JobResponse,
   ReportListResponse,
   ReportResponse,
@@ -95,6 +96,11 @@ export const api = {
     getSummary: (handle: string, videoId: string) =>
       apiGet<VideoSummaryResponse>(
         `/channels/${handle}/videos/${videoId}/summary`,
+      ),
+    getTranscript: (handle: string, videoId: string, language?: string) =>
+      apiGet<TranscriptResponse>(
+        `/channels/${handle}/videos/${videoId}/transcript`,
+        { language: language || "" },
       ),
   },
   reports: {

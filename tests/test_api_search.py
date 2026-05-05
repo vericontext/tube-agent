@@ -24,6 +24,17 @@ class TestSearch:
         for r in resp.json()["results"]:
             assert r["type"] == "video"
 
+    def test_search_transcripts(self, seeded_client):
+        resp = seeded_client.get("/api/v1/search?q=pricing&type=transcripts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        result = data["results"][0]
+        assert result["type"] == "transcript"
+        assert result["timestamp"] == "00:12"
+        assert result["youtube_url"].endswith("&t=12s")
+        assert result["channel_handle"] == "testchannel"
+
     def test_search_no_results(self, seeded_client):
         resp = seeded_client.get("/api/v1/search?q=zzz_nonexistent_zzz")
         assert resp.status_code == 200

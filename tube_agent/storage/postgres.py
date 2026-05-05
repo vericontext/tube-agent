@@ -27,6 +27,7 @@ from tube_agent.models.database import (
     VideoSummary,
     SummarySection,
     SummaryBullet,
+    TranscriptSegment,
     ChannelReport,
     Job,
 )
@@ -259,6 +260,75 @@ class PostgresStorage(StorageBackend):
         with self.get_session() as session:
             return session.get(VideoSummary, video_id) is not None
 
+    # --- Transcripts ---
+
+    def save_transcript_segments(self, video_id: str, language: str, source: str, segments: list[dict]) -> int:
+        with self.get_session() as session:
+            session.execute(
+                TranscriptSegment.__table__.delete()
+                .where(TranscriptSegment.video_id == video_id)
+                .where(TranscriptSegment.language == language)
+            )
+            for i, segment in enumerate(segments):
+                session.add(TranscriptSegment(
+                    video_id=video_id,
+                    language=language,
+                    source=source,
+                    start_seconds=float(segment.get("start_seconds", 0.0)),
+                    end_seconds=float(segment.get("end_seconds", 0.0)),
+                    text=segment.get("text", ""),
+                    sort_order=i,
+                ))
+            session.commit()
+            return len(segments)
+
+    def get_transcript(self, video_id: str, language: str | None = None) -> list[dict]:
+        with self.get_session() as session:
+            query = select(TranscriptSegment).where(TranscriptSegment.video_id == video_id)
+            if language:
+                query = query.where(TranscriptSegment.language == language)
+            query = query.order_by(TranscriptSegment.language, TranscriptSegment.sort_order)
+            segments = session.execute(query).scalars().all()
+            return [_transcript_segment_to_dict(s) for s in segments]
+
+    def has_transcript(self, video_id: str, language: str | None = None) -> bool:
+        with self.get_session() as session:
+            query = select(func.count(TranscriptSegment.id)).where(TranscriptSegment.video_id == video_id)
+            if language:
+                query = query.where(TranscriptSegment.language == language)
+            return session.execute(query).scalar() > 0
+
+    def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
+        pattern = f"%{q}%"
+        with self.get_session() as session:
+            query = (
+                select(TranscriptSegment, Video, Channel)
+                .join(Video, TranscriptSegment.video_id == Video.video_id)
+                .join(Channel, Video.channel_id == Channel.id)
+                .where(TranscriptSegment.text.ilike(pattern))
+            )
+            if channel_id:
+                query = query.where(Video.channel_id == channel_id)
+            rows = session.execute(
+                query
+                .order_by(desc(Video.published_at), TranscriptSegment.start_seconds)
+                .limit(limit)
+            ).all()
+            return [
+                {
+                    "video_id": segment.video_id,
+                    "channel_id": video.channel_id,
+                    "channel_handle": channel.handle,
+                    "video_title": video.title,
+                    "language": segment.language,
+                    "source": segment.source,
+                    "start_seconds": segment.start_seconds,
+                    "end_seconds": segment.end_seconds,
+                    "text": segment.text,
+                }
+                for segment, video, channel in rows
+            ]
+
     # --- Reports ---
 
     def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:
@@ -405,6 +475,29 @@ def _comment_to_dict(c: Comment) -> dict:
         "text": c.text,
         "like_count": c.like_count,
         "published_at": c.published_at.isoformat() if c.published_at else None,
+    }
+
+
+def _format_timestamp(seconds: float | int | None) -> str:
+    total = max(0, int(seconds or 0))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def _transcript_segment_to_dict(s: TranscriptSegment) -> dict:
+    return {
+        "video_id": s.video_id,
+        "language": s.language,
+        "source": s.source,
+        "start_seconds": s.start_seconds,
+        "end_seconds": s.end_seconds,
+        "timestamp": _format_timestamp(s.start_seconds),
+        "text": s.text,
+        "sort_order": s.sort_order,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
     }
 
 

@@ -11,6 +11,15 @@ from botocore.exceptions import ClientError
 from tube_agent.storage.base import StorageBackend
 
 
+def _format_timestamp(seconds: float | int | None) -> str:
+    total = max(0, int(seconds or 0))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
 class R2Storage(StorageBackend):
     """S3-compatible object storage backend for Cloudflare R2."""
 
@@ -168,6 +177,92 @@ class R2Storage(StorageBackend):
             if self._head(self._key("channels", handle, "summaries", f"{video_id}.json")):
                 return True
         return False
+
+    # --- Transcripts ---
+
+    def save_transcript_segments(self, video_id: str, language: str, source: str, segments: list[dict]) -> int:
+        handle = self._find_handle_for_video(video_id)
+        if not handle:
+            return 0
+        normalized = [
+            {
+                "video_id": video_id,
+                "language": language,
+                "source": source,
+                "start_seconds": float(s.get("start_seconds", 0.0)),
+                "end_seconds": float(s.get("end_seconds", 0.0)),
+                "timestamp": _format_timestamp(s.get("start_seconds", 0.0)),
+                "text": s.get("text", ""),
+                "sort_order": i,
+            }
+            for i, s in enumerate(segments)
+        ]
+        self._put_json(
+            self._key("channels", handle, "transcripts", f"{video_id}.{language}.json"),
+            {
+                "videoId": video_id,
+                "language": language,
+                "source": source,
+                "segments": normalized,
+            },
+        )
+        return len(normalized)
+
+    def get_transcript(self, video_id: str, language: str | None = None) -> list[dict]:
+        segments = []
+        for handle in self._channel_map.values():
+            prefix = self._key("channels", handle, "transcripts") + "/"
+            paginator = self.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if language and not key.endswith(f".{language}.json"):
+                        continue
+                    if not key.rsplit("/", 1)[-1].startswith(f"{video_id}."):
+                        continue
+                    data = self._get_json(key)
+                    if data:
+                        segments.extend(data.get("segments", []))
+        return sorted(segments, key=lambda s: (s.get("language", ""), s.get("sort_order", 0)))
+
+    def has_transcript(self, video_id: str, language: str | None = None) -> bool:
+        return bool(self.get_transcript(video_id, language))
+
+    def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
+        needle = q.lower()
+        results = []
+        for handle in self._channel_map.values():
+            channel = self._get_json(self._key("channels", handle, "channel.json")) or {}
+            if channel_id and channel.get("id") != channel_id:
+                continue
+            videos = self._get_json(self._key("channels", handle, "videos.json")) or []
+            video_by_id = {v.get("videoId"): v for v in videos}
+            prefix = self._key("channels", handle, "transcripts") + "/"
+            paginator = self.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    data = self._get_json(obj["Key"])
+                    if not data:
+                        continue
+                    video_id = data.get("videoId", "")
+                    video = video_by_id.get(video_id, {})
+                    for segment in data.get("segments", []):
+                        text = segment.get("text", "")
+                        if needle in text.lower():
+                            results.append({
+                                "video_id": video_id,
+                                "channel_id": channel.get("id", ""),
+                                "channel_handle": channel.get("handle", handle),
+                                "video_title": video.get("title", ""),
+                                "language": segment.get("language", data.get("language", "")),
+                                "source": segment.get("source", data.get("source", "")),
+                                "start_seconds": segment.get("start_seconds", 0.0),
+                                "end_seconds": segment.get("end_seconds", 0.0),
+                                "text": text,
+                            })
+                            if len(results) >= limit:
+                                return results
+        return results
 
     # --- Reports ---
 

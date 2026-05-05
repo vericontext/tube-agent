@@ -39,3 +39,19 @@ class TestGetVideoSummary:
     def test_not_found(self, seeded_client):
         resp = seeded_client.get("/api/v1/channels/testchannel/videos/vid_999/summary")
         assert resp.status_code == 404
+
+
+class TestGetVideoTranscript:
+    def test_found(self, seeded_client):
+        resp = seeded_client.get("/api/v1/channels/testchannel/videos/vid_1/transcript")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["video_id"] == "vid_1"
+        assert data["language"] == "en"
+        assert len(data["segments"]) == 2
+        assert data["segments"][0]["timestamp"] == "00:12"
+
+    def test_empty(self, seeded_client):
+        resp = seeded_client.get("/api/v1/channels/testchannel/videos/vid_2/transcript")
+        assert resp.status_code == 200
+        assert resp.json()["segments"] == []

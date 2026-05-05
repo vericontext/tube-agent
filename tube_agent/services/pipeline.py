@@ -157,6 +157,92 @@ def fetch_comments(
     logger.info("  Comments: %d new, %d skipped", success_count, skipped_count)
 
 
+def fetch_transcripts(
+    videos: list[dict],
+    storage: StorageBackend,
+    languages: list[str] | None = None,
+    max_workers: int = 5,
+) -> dict[str, bool]:
+    """Fetch caption-backed transcript segments for each video."""
+    from tube_agent.services.transcripts import TranscriptExtractor, TranscriptUnavailableError
+
+    target_languages = languages or ["ko", "en"]
+    extractor = TranscriptExtractor(target_languages)
+    logger.info(
+        "Fetching transcripts for %d videos (languages=%s, workers=%d)...",
+        len(videos),
+        ",".join(target_languages),
+        max_workers,
+    )
+
+    results: dict[str, bool] = {}
+    success_count = 0
+    skipped_count = 0
+    unavailable_count = 0
+
+    to_process: list[dict] = []
+    for video in videos:
+        vid = video["videoId"]
+        if any(storage.has_transcript(vid, language) for language in target_languages):
+            results[vid] = True
+            skipped_count += 1
+        else:
+            to_process.append(video)
+
+    if skipped_count:
+        logger.info(
+            "  Skipped %d already-indexed videos, processing %d remaining",
+            skipped_count,
+            len(to_process),
+        )
+
+    def _process_one(video: dict) -> tuple[str, bool, str | None]:
+        vid = video["videoId"]
+        try:
+            transcript = extractor.extract(vid)
+            saved = storage.save_transcript_segments(
+                transcript.video_id,
+                transcript.language,
+                transcript.source,
+                transcript.segments,
+            )
+            return vid, saved > 0, None
+        except TranscriptUnavailableError as e:
+            return vid, False, f"unavailable: {e}"
+        except Exception as e:
+            return vid, False, f"error: {e}"
+
+    completed = 0
+    total = len(to_process)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_process_one, v): v for v in to_process}
+        for future in as_completed(futures):
+            vid, ok, note = future.result()
+            results[vid] = ok
+            if ok:
+                success_count += 1
+            else:
+                unavailable_count += 1
+                if note and note.startswith("error"):
+                    logger.warning("  Transcript %s: %s", vid, note)
+                elif note:
+                    logger.info("  Transcript %s: %s", vid, note)
+            completed += 1
+            if completed % 10 == 0 or completed == total:
+                logger.info(
+                    "  Transcript progress: %d/%d (%d OK, %d skipped, %d unavailable)",
+                    completed,
+                    total,
+                    success_count,
+                    skipped_count,
+                    unavailable_count,
+                )
+
+    logger.info("  Transcripts: %d new, %d skipped, %d unavailable", success_count, skipped_count, unavailable_count)
+    return results
+
+
 def fetch_summaries(
     videos: list[dict],
     storage: StorageBackend,
@@ -239,8 +325,10 @@ def run_full_pipeline(
     youtube_api_key: str,
     gemini_api_key: str,
     max_videos: int = 100,
-    skip_comments: bool = False,
-    skip_summaries: bool = False,
+    skip_comments: bool = True,
+    skip_summaries: bool = True,
+    fetch_transcript_data: bool = True,
+    transcript_languages: list[str] | None = None,
     summary_max: int | None = None,
     media_resolution: str = "low",
     skip_report: bool = False,
@@ -266,6 +354,10 @@ def run_full_pipeline(
         channel_data = fetch_channel(yt_client, handle, storage)
         videos = fetch_videos(yt_client, channel_data, max_videos, storage)
 
+        transcript_results = {}
+        if fetch_transcript_data:
+            transcript_results = fetch_transcripts(videos, storage, transcript_languages, max_workers=max_workers)
+
         if not skip_comments:
             fetch_comments(yt_client, videos, storage)
 
@@ -288,6 +380,7 @@ def run_full_pipeline(
             "channel_id": channel_data["id"],
             "handle": handle,
             "video_count": len(videos),
+            "transcript_count": sum(1 for ok in transcript_results.values() if ok),
             "report_generated": report_generated,
             "quota": yt_client.quota.summary(),
         }

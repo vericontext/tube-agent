@@ -41,6 +41,8 @@ def create_channel_analysis(
             "max_videos": body.max_videos,
             "skip_comments": body.skip_comments,
             "skip_summaries": body.skip_summaries,
+            "fetch_transcripts": body.fetch_transcripts,
+            "transcript_languages": body.transcript_languages,
             "summary_max": body.summary_max,
             "media_resolution": body.media_resolution,
         },
@@ -70,6 +72,8 @@ def create_channel_analysis(
                     max_videos=body.max_videos,
                     skip_comments=body.skip_comments,
                     skip_summaries=body.skip_summaries,
+                    fetch_transcript_data=body.fetch_transcripts,
+                    transcript_languages=body.transcript_languages,
                     summary_max=body.summary_max,
                     media_resolution=body.media_resolution,
                 )

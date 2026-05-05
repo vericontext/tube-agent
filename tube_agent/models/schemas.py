@@ -37,10 +37,12 @@ class ReportType(str, enum.Enum):
 class ChannelCreate(BaseModel):
     handle: str = Field(..., description="YouTube channel handle (e.g. ycombinator)")
     max_videos: int = Field(default=100, ge=1, le=1000)
-    skip_comments: bool = False
-    skip_summaries: bool = False
+    skip_comments: bool = True
+    skip_summaries: bool = True
     summary_max: int | None = None
     media_resolution: str = "low"
+    fetch_transcripts: bool = True
+    transcript_languages: list[str] = ["ko", "en"]
 
 
 class ChannelResponse(BaseModel):
@@ -138,6 +140,26 @@ class VideoSummaryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Transcripts ---
+
+class TranscriptSegmentResponse(BaseModel):
+    video_id: str
+    language: str
+    source: str
+    start_seconds: float
+    end_seconds: float
+    timestamp: str
+    text: str
+
+    model_config = {"from_attributes": True}
+
+
+class TranscriptResponse(BaseModel):
+    video_id: str
+    language: str | None = None
+    segments: list[TranscriptSegmentResponse] = []
+
+
 # --- Job ---
 
 class JobCreate(BaseModel):
@@ -182,11 +204,17 @@ class ReportListResponse(BaseModel):
 # --- Search ---
 
 class SearchResult(BaseModel):
-    type: str  # "video" | "summary"
+    type: str  # "video" | "summary" | "transcript"
     video_id: str
     title: str
     snippet: str
     score: float = 0.0
+    channel_handle: str | None = None
+    video_title: str | None = None
+    start_seconds: float | None = None
+    timestamp: str | None = None
+    youtube_url: str | None = None
+    language: str | None = None
 
 
 class SearchResponse(BaseModel):

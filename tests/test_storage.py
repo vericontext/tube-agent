@@ -1,6 +1,6 @@
 """Tests for PostgresStorage CRUD operations."""
 
-from tests.conftest import SAMPLE_CHANNEL, SAMPLE_VIDEOS, SAMPLE_ANALYSIS
+from tests.conftest import SAMPLE_CHANNEL, SAMPLE_VIDEOS, SAMPLE_ANALYSIS, SAMPLE_TRANSCRIPT
 
 
 class TestChannelStorage:
@@ -94,6 +94,44 @@ class TestSummaryStorage:
 
     def test_get_nonexistent(self, storage):
         assert storage.get_summary("nonexistent") is None
+
+
+class TestTranscriptStorage:
+    def test_save_and_get(self, storage):
+        storage.save_channel(SAMPLE_CHANNEL)
+        storage.save_videos(SAMPLE_CHANNEL["id"], SAMPLE_VIDEOS[:1])
+
+        assert storage.has_transcript("vid_1") is False
+
+        count = storage.save_transcript_segments("vid_1", "en", "manual", SAMPLE_TRANSCRIPT)
+
+        assert count == 2
+        assert storage.has_transcript("vid_1") is True
+        transcript = storage.get_transcript("vid_1")
+        assert len(transcript) == 2
+        assert transcript[0]["timestamp"] == "00:12"
+        assert "pricing strategy" in transcript[0]["text"]
+
+    def test_replace_same_language(self, storage):
+        storage.save_channel(SAMPLE_CHANNEL)
+        storage.save_videos(SAMPLE_CHANNEL["id"], SAMPLE_VIDEOS[:1])
+
+        storage.save_transcript_segments("vid_1", "en", "manual", SAMPLE_TRANSCRIPT)
+        storage.save_transcript_segments("vid_1", "en", "manual", SAMPLE_TRANSCRIPT[:1])
+
+        transcript = storage.get_transcript("vid_1", "en")
+        assert len(transcript) == 1
+
+    def test_search_transcripts(self, storage):
+        storage.save_channel(SAMPLE_CHANNEL)
+        storage.save_videos(SAMPLE_CHANNEL["id"], SAMPLE_VIDEOS[:1])
+        storage.save_transcript_segments("vid_1", "en", "manual", SAMPLE_TRANSCRIPT)
+
+        results = storage.search_transcripts("pricing", limit=10)
+
+        assert len(results) == 1
+        assert results[0]["video_id"] == "vid_1"
+        assert results[0]["channel_handle"] == "testchannel"
 
 
 class TestReportStorage:

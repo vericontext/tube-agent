@@ -1,8 +1,8 @@
 # Tube Agent
 
-YouTube channel data collection and AI-powered video analysis system.
+YouTube channel transcript indexing and AI-powered video analysis system.
 
-Collects channel metadata, video lists, comments, and runs Gemini multimodal analysis on each video to produce structured summaries and a comprehensive channel report.
+Collects channel metadata, video lists, and timestamped transcripts so trusted YouTube channels can be searched quickly. Gemini summaries, comments, and reports remain available as optional deeper analysis.
 
 ## Setup
 
@@ -243,8 +243,10 @@ channels/{handle}/reports/{report_type}.md
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--max-videos N` | 100 | Maximum number of videos to fetch |
-| `--skip-comments` | false | Skip comment collection (Stage 3) |
-| `--skip-summaries` | false | Skip Gemini analysis (Stage 4) |
+| `--with-comments` | false | Fetch comments |
+| `--with-summaries` | false | Run Gemini video analysis |
+| `--skip-transcripts` | false | Skip transcript indexing |
+| `--transcript-languages` | `ko,en` | Comma-separated transcript language priority |
 | `--skip-report` | false | Skip report generation (Stage 5) |
 | `--summary-max N` | all | Limit how many videos Gemini analyzes |
 | `--media-resolution` | low | Gemini video resolution: `low`, `medium`, `high` |
@@ -252,20 +254,16 @@ channels/{handle}/reports/{report_type}.md
 ### Examples
 
 ```bash
-# Quick test: skip comments, analyze only 5 videos
-.venv/bin/python -m scripts.fetch_all @eo_korea \
-  --skip-comments --summary-max 5
+# Quick test: index transcripts for 20 videos
+.venv/bin/python -m scripts.fetch_all @eo_korea --max-videos 20
 
-# Full collection for top 100 videos
-.venv/bin/python -m scripts.fetch_all @eo_korea --summary-max 100
-
-# Rerun: only new videos get analyzed (already-analyzed ones are skipped)
+# Include Gemini summaries for 10 videos
 .venv/bin/python -m scripts.fetch_all @eo_korea \
-  --skip-comments --summary-max 50
+  --with-summaries --summary-max 10
 
-# Collect metadata only, no AI analysis
+# Include comments and Gemini summaries
 .venv/bin/python -m scripts.fetch_all @eo_korea \
-  --skip-comments --skip-summaries
+  --with-comments --with-summaries --summary-max 50
 ```
 
 ## API Server Mode
@@ -287,9 +285,10 @@ docker-compose up
 | GET | `/api/v1/channels/{handle}` | Channel details |
 | GET | `/api/v1/channels/{handle}/videos` | Video list (sort/filter/paginate) |
 | GET | `/api/v1/channels/{handle}/videos/{id}/summary` | Video summary |
+| GET | `/api/v1/channels/{handle}/videos/{id}/transcript` | Timestamped transcript |
 | GET | `/api/v1/channels/{handle}/reports` | List reports |
 | GET | `/api/v1/channels/{handle}/reports/{type}` | Get report |
-| GET | `/api/v1/search?q=keyword` | Search videos/summaries |
+| GET | `/api/v1/search?q=keyword` | Search videos/summaries/transcripts |
 | GET | `/api/v1/jobs/{id}` | Job status |
 | GET | `/health` | Health check |
 

@@ -126,6 +126,19 @@ SAMPLE_ANALYSIS = {
     ],
 }
 
+SAMPLE_TRANSCRIPT = [
+    {
+        "start_seconds": 12.0,
+        "end_seconds": 28.0,
+        "text": "The founder explains how pricing strategy changed after customer interviews.",
+    },
+    {
+        "start_seconds": 45.0,
+        "end_seconds": 63.0,
+        "text": "They compare freemium and enterprise sales for early startup teams.",
+    },
+]
+
 
 @pytest.fixture()
 def seeded_storage(storage):
@@ -133,6 +146,7 @@ def seeded_storage(storage):
     storage.save_channel(SAMPLE_CHANNEL)
     storage.save_videos(SAMPLE_CHANNEL["id"], SAMPLE_VIDEOS)
     storage.save_summary("vid_1", "Test Video 1", SAMPLE_ANALYSIS)
+    storage.save_transcript_segments("vid_1", "en", "manual", SAMPLE_TRANSCRIPT)
     return storage
 
 

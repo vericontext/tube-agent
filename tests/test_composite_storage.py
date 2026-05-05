@@ -59,6 +59,19 @@ class FakeStorage(StorageBackend):
     def has_summary(self, video_id):
         return False
 
+    def save_transcript_segments(self, video_id, language, source, segments):
+        self._record("save_transcript_segments", video_id, language, source, segments)
+        return len(segments)
+
+    def get_transcript(self, video_id, language=None):
+        return []
+
+    def has_transcript(self, video_id, language=None):
+        return False
+
+    def search_transcripts(self, q, limit=20, channel_id=None):
+        return []
+
     def save_report(self, channel_id, report_type, content_md, tenant_id=None):
         self._record("save_report", channel_id, report_type, content_md)
         return "fake-id"
@@ -130,6 +143,16 @@ class TestCompositeWrites:
         assert any(m == "save_report" for m, _ in primary.calls)
         assert any(m == "save_report" for m, _ in secondary.calls)
 
+    def test_save_transcript_segments_propagates(self):
+        primary = FakeStorage()
+        secondary = FakeStorage()
+        composite = CompositeStorage(primary, secondary)
+
+        composite.save_transcript_segments("vid_1", "en", "manual", [{"text": "hello"}])
+
+        assert any(m == "save_transcript_segments" for m, _ in primary.calls)
+        assert any(m == "save_transcript_segments" for m, _ in secondary.calls)
+
 
 class TestCompositeReads:
     def test_reads_from_primary_only(self):
@@ -142,6 +165,9 @@ class TestCompositeReads:
         composite.get_summary("vid_1")
         composite.has_comments("vid_1")
         composite.has_summary("vid_1")
+        composite.has_transcript("vid_1")
+        composite.get_transcript("vid_1")
+        composite.search_transcripts("hello")
         composite.get_report("ch1", "overview")
         composite.list_reports("ch1")
 

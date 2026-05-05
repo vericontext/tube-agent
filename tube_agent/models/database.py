@@ -112,6 +112,8 @@ class Video(Base):
     channel = relationship("Channel", back_populates="videos")
     comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
     summary = relationship("VideoSummary", back_populates="video", uselist=False, cascade="all, delete-orphan")
+    transcript_segments = relationship("TranscriptSegment", back_populates="video", cascade="all, delete-orphan",
+                                       order_by="TranscriptSegment.sort_order")
 
     __table_args__ = (
         Index("ix_videos_channel_published", "channel_id", "published_at"),
@@ -182,6 +184,27 @@ class SummaryBullet(Base):
     sort_order = Column(Integer, default=0)
 
     summary = relationship("VideoSummary", back_populates="bullets")
+
+
+class TranscriptSegment(Base):
+    __tablename__ = "transcript_segments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(String, ForeignKey("videos.video_id"), nullable=False)
+    language = Column(String, default="")
+    source = Column(String, default="")
+    start_seconds = Column(Float, default=0.0)
+    end_seconds = Column(Float, default=0.0)
+    text = Column(Text, default="")
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    video = relationship("Video", back_populates="transcript_segments")
+
+    __table_args__ = (
+        Index("ix_transcript_segments_video_language", "video_id", "language"),
+        Index("ix_transcript_segments_video_order", "video_id", "sort_order"),
+    )
 
 
 # --- Tenant Data ---

@@ -93,6 +93,28 @@ class StorageBackend(ABC):
         """Check if a summary exists for a video."""
         ...
 
+    # --- Transcripts ---
+
+    @abstractmethod
+    def save_transcript_segments(self, video_id: str, language: str, source: str, segments: list[dict]) -> int:
+        """Save transcript segments for a video/language. Returns count saved."""
+        ...
+
+    @abstractmethod
+    def get_transcript(self, video_id: str, language: str | None = None) -> list[dict]:
+        """Get transcript segments for a video."""
+        ...
+
+    @abstractmethod
+    def has_transcript(self, video_id: str, language: str | None = None) -> bool:
+        """Check if transcript segments exist for a video."""
+        ...
+
+    @abstractmethod
+    def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
+        """Search transcript segments."""
+        ...
+
     # --- Reports ---
 
     @abstractmethod

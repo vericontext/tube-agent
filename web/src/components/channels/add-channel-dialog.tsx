@@ -37,6 +37,10 @@ export function AddChannelDialog() {
         {
           handle: handle.replace("@", ""),
           max_videos: parseInt(maxVideos) || 100,
+          skip_comments: true,
+          skip_summaries: true,
+          fetch_transcripts: true,
+          transcript_languages: ["ko", "en"],
         },
         session.access_token,
       );
@@ -58,12 +62,12 @@ export function AddChannelDialog() {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Analyze YouTube Channel</DialogTitle>
+        <DialogTitle>Index YouTube Channel</DialogTitle>
         </DialogHeader>
         {!session ? (
           <div className="text-center py-4">
             <p className="text-muted-foreground mb-4">
-              Sign in to start analyzing channels
+              Sign in to start indexing channels
             </p>
             <Button onClick={() => { setOpen(false); router.push("/login"); }}>
               Sign In
@@ -92,7 +96,7 @@ export function AddChannelDialog() {
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading || !handle.trim()} className="w-full">
-              {loading ? "Starting..." : "Start Analysis"}
+              {loading ? "Starting..." : "Start Indexing"}
             </Button>
           </form>
         )}

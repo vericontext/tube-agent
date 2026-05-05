@@ -83,6 +83,22 @@ export interface VideoSummaryResponse {
   created_at: string | null;
 }
 
+export interface TranscriptSegmentResponse {
+  video_id: string;
+  language: string;
+  source: string;
+  start_seconds: number;
+  end_seconds: number;
+  timestamp: string;
+  text: string;
+}
+
+export interface TranscriptResponse {
+  video_id: string;
+  language: string | null;
+  segments: TranscriptSegmentResponse[];
+}
+
 export interface JobResponse {
   id: string;
   tenant_id: string | null;
@@ -111,11 +127,17 @@ export interface ReportListResponse {
 }
 
 export interface SearchResult {
-  type: "video" | "summary";
+  type: "video" | "summary" | "transcript";
   video_id: string;
   title: string;
   snippet: string;
   score: number;
+  channel_handle: string | null;
+  video_title: string | null;
+  start_seconds: number | null;
+  timestamp: string | null;
+  youtube_url: string | null;
+  language: string | null;
 }
 
 export interface SearchResponse {
@@ -131,4 +153,6 @@ export interface ChannelCreateRequest {
   skip_summaries?: boolean;
   summary_max?: number | null;
   media_resolution?: string;
+  fetch_transcripts?: boolean;
+  transcript_languages?: string[];
 }

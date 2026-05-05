@@ -29,7 +29,7 @@ export default function DashboardPage() {
           <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h2 className="text-lg font-semibold mb-2">No channels yet</h2>
           <p className="text-muted-foreground mb-4">
-            Add a YouTube channel to start analyzing
+            Add a YouTube channel to start indexing transcripts
           </p>
           <AddChannelDialog />
         </div>

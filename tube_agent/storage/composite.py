@@ -81,6 +81,20 @@ class CompositeStorage(StorageBackend):
     def has_summary(self, video_id: str) -> bool:
         return self.primary.has_summary(video_id)
 
+    # --- Transcripts ---
+
+    def save_transcript_segments(self, video_id: str, language: str, source: str, segments: list[dict]) -> int:
+        return self._write_all("save_transcript_segments", video_id, language, source, segments)
+
+    def get_transcript(self, video_id: str, language: str | None = None) -> list[dict]:
+        return self.primary.get_transcript(video_id, language)
+
+    def has_transcript(self, video_id: str, language: str | None = None) -> bool:
+        return self.primary.has_transcript(video_id, language)
+
+    def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
+        return self.primary.search_transcripts(q, limit, channel_id)
+
     # --- Reports ---
 
     def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:

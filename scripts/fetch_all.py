@@ -13,8 +13,16 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch YouTube channel data")
     parser.add_argument("handle", help="YouTube channel handle (e.g. @eo_korea)")
     parser.add_argument("--max-videos", type=int, default=100)
-    parser.add_argument("--skip-comments", action="store_true")
-    parser.add_argument("--skip-summaries", action="store_true")
+    parser.add_argument("--with-comments", action="store_true",
+                        help="Fetch comments (off by default for transcript-search indexing)")
+    parser.add_argument("--with-summaries", action="store_true",
+                        help="Run Gemini summaries (off by default for transcript-search indexing)")
+    parser.add_argument("--skip-comments", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--skip-summaries", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--skip-transcripts", action="store_true",
+                        help="Skip transcript indexing")
+    parser.add_argument("--transcript-languages", default="ko,en",
+                        help="Comma-separated transcript language priority (default: ko,en)")
     parser.add_argument("--skip-report", action="store_true",
                         help="Skip automatic report generation")
     parser.add_argument("--summary-max", type=int, default=None,
@@ -52,8 +60,10 @@ def main():
         youtube_api_key=settings.youtube_api_key,
         gemini_api_key=settings.gemini_api_key,
         max_videos=args.max_videos,
-        skip_comments=args.skip_comments,
-        skip_summaries=args.skip_summaries,
+        skip_comments=(not args.with_comments) or args.skip_comments,
+        skip_summaries=(not args.with_summaries) or args.skip_summaries,
+        fetch_transcript_data=not args.skip_transcripts,
+        transcript_languages=[lang.strip() for lang in args.transcript_languages.split(",") if lang.strip()],
         summary_max=args.summary_max,
         media_resolution=args.media_resolution,
         skip_report=args.skip_report,

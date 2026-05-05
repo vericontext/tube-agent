@@ -3,10 +3,13 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSummary } from "@/hooks/use-summary";
+import { useTranscript } from "@/hooks/use-transcript";
 import { useChannel } from "@/hooks/use-channels";
 import { useVideo, useVideos } from "@/hooks/use-videos";
 import { SummaryView } from "@/components/summaries/summary-view";
+import { TranscriptView } from "@/components/transcripts/transcript-view";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ExternalLink } from "lucide-react";
 
 export default function VideoSummaryPage({
@@ -16,6 +19,7 @@ export default function VideoSummaryPage({
 }) {
   const { handle, videoId } = use(params);
   const { data: summary, isLoading } = useSummary(handle, videoId);
+  const { data: transcript, isLoading: isTranscriptLoading } = useTranscript(handle, videoId);
   const { data: channel } = useChannel(handle);
   const { data: videoDetail } = useVideo(handle, videoId);
   const { data: videoList } = useVideos(handle);
@@ -121,7 +125,18 @@ export default function VideoSummaryPage({
 
         {/* Right: Summary */}
         <div className="lg:min-w-0 lg:flex-1 mt-6 lg:mt-0">
-          <SummaryView summary={summary} isLoading={isLoading} />
+          <Tabs defaultValue="transcript">
+            <TabsList>
+              <TabsTrigger value="transcript">Transcript</TabsTrigger>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+            </TabsList>
+            <TabsContent value="transcript" className="mt-4">
+              <TranscriptView transcript={transcript} isLoading={isTranscriptLoading} />
+            </TabsContent>
+            <TabsContent value="summary" className="mt-4">
+              <SummaryView summary={summary} isLoading={isLoading} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

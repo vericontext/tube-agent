@@ -12,6 +12,15 @@ from tube_agent.storage.base import StorageBackend
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
+def _format_timestamp(seconds: float | int | None) -> str:
+    total = max(0, int(seconds or 0))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
 class LocalStorage(StorageBackend):
     """JSON file-based storage matching the original scripts/ behavior."""
 
@@ -33,6 +42,7 @@ class LocalStorage(StorageBackend):
         p = self._paths(handle)
         for d in [
             p["raw"], p["raw"] / "comments", p["raw"] / "summaries",
+            p["raw"] / "transcripts",
             p["processed"], p["output"], p["output"] / "reports",
         ]:
             d.mkdir(parents=True, exist_ok=True)
@@ -217,6 +227,99 @@ class LocalStorage(StorageBackend):
             if d.is_dir() and (d / "raw" / "summaries" / f"{video_id}.json").exists():
                 return True
         return False
+
+    # --- Transcripts ---
+
+    def save_transcript_segments(self, video_id: str, language: str, source: str, segments: list[dict]) -> int:
+        handle = self._find_handle_for_video(video_id)
+        if not handle:
+            return 0
+        out_path = self.base_dir / "data" / handle / "raw" / "transcripts" / f"{video_id}.{language}.json"
+        normalized = [
+            {
+                "video_id": video_id,
+                "language": language,
+                "source": source,
+                "start_seconds": float(s.get("start_seconds", 0.0)),
+                "end_seconds": float(s.get("end_seconds", 0.0)),
+                "timestamp": _format_timestamp(s.get("start_seconds", 0.0)),
+                "text": s.get("text", ""),
+                "sort_order": i,
+            }
+            for i, s in enumerate(segments)
+        ]
+        self._save_json(
+            {
+                "videoId": video_id,
+                "language": language,
+                "source": source,
+                "segments": normalized,
+            },
+            out_path,
+        )
+        return len(normalized)
+
+    def get_transcript(self, video_id: str, language: str | None = None) -> list[dict]:
+        data_dir = self.base_dir / "data"
+        if not data_dir.exists():
+            return []
+        segments = []
+        for d in data_dir.iterdir():
+            if not d.is_dir():
+                continue
+            transcript_dir = d / "raw" / "transcripts"
+            if not transcript_dir.exists():
+                continue
+            pattern = f"{video_id}.{language}.json" if language else f"{video_id}.*.json"
+            for path in sorted(transcript_dir.glob(pattern)):
+                data = self._load_json(path)
+                if data:
+                    segments.extend(data.get("segments", []))
+        return sorted(segments, key=lambda s: (s.get("language", ""), s.get("sort_order", 0)))
+
+    def has_transcript(self, video_id: str, language: str | None = None) -> bool:
+        return bool(self.get_transcript(video_id, language))
+
+    def search_transcripts(self, q: str, limit: int = 20, channel_id: str | None = None) -> list[dict]:
+        needle = q.lower()
+        results = []
+        data_dir = self.base_dir / "data"
+        if not data_dir.exists():
+            return []
+        for d in data_dir.iterdir():
+            if not d.is_dir():
+                continue
+            channel = self._load_json(d / "processed" / "channel_summary.json") or {}
+            if channel_id and channel.get("id") != channel_id:
+                continue
+            videos = self._load_json(d / "processed" / "videos_enriched.json") or []
+            video_by_id = {v.get("videoId"): v for v in videos}
+            transcript_dir = d / "raw" / "transcripts"
+            if not transcript_dir.exists():
+                continue
+            for path in sorted(transcript_dir.glob("*.json")):
+                data = self._load_json(path)
+                if not data:
+                    continue
+                video_id = data.get("videoId", "")
+                video = video_by_id.get(video_id, {})
+                for segment in data.get("segments", []):
+                    text = segment.get("text", "")
+                    if needle in text.lower():
+                        results.append({
+                            "video_id": video_id,
+                            "channel_id": channel.get("id", ""),
+                            "channel_handle": channel.get("handle", d.name),
+                            "video_title": video.get("title", ""),
+                            "language": segment.get("language", data.get("language", "")),
+                            "source": segment.get("source", data.get("source", "")),
+                            "start_seconds": segment.get("start_seconds", 0.0),
+                            "end_seconds": segment.get("end_seconds", 0.0),
+                            "text": text,
+                        })
+                        if len(results) >= limit:
+                            return results
+        return results
 
     # --- Reports ---
 

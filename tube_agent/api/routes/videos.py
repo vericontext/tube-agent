@@ -9,6 +9,8 @@ from tube_agent.models.schemas import (
     VideoSummaryResponse,
     SummarySectionResponse,
     SummaryBulletResponse,
+    TranscriptResponse,
+    TranscriptSegmentResponse,
 )
 from tube_agent.storage.postgres import PostgresStorage
 
@@ -88,4 +90,30 @@ def get_video_summary(
         sections=[SummarySectionResponse(**s) for s in summary.get("sections", [])],
         bullets=[SummaryBulletResponse(**b) for b in summary.get("bullets", [])],
         created_at=summary.get("created_at"),
+    )
+
+
+@router.get(
+    "/channels/{handle}/videos/{video_id}/transcript",
+    response_model=TranscriptResponse,
+)
+def get_video_transcript(
+    handle: str,
+    video_id: str,
+    language: str | None = Query(None, min_length=2),
+    storage: PostgresStorage = Depends(get_storage),
+):
+    """Get transcript segments for a video."""
+    video = storage.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    segments = storage.get_transcript(video_id, language)
+    response_language = language
+    if response_language is None and segments:
+        response_language = segments[0].get("language")
+    return TranscriptResponse(
+        video_id=video_id,
+        language=response_language,
+        segments=[TranscriptSegmentResponse(**s) for s in segments],
     )

@@ -9,3 +9,4 @@ dist/
 build/
 *.db
 *.sqlite3
+.playwright-mcp/
