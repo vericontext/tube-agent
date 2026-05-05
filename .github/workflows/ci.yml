@@ -7,8 +7,46 @@ on:
       - main
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'tube_agent/**'
+              - 'scripts/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - '.github/workflows/**'
+            frontend:
+              - 'desktop/src/**'
+              - 'desktop/package.json'
+              - 'desktop/package-lock.json'
+              - 'desktop/index.html'
+              - 'desktop/vite.config.*'
+              - 'desktop/tsconfig*.json'
+              - '.github/workflows/**'
+            desktop:
+              - 'desktop/**'
+              - 'tube_agent/**'
+              - 'scripts/**'
+              - 'pyproject.toml'
+              - '.github/workflows/**'
+
   python-tests:
     name: Python tests
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -33,6 +71,8 @@ jobs:
 
   frontend-build:
     name: Frontend build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -54,6 +94,8 @@ jobs:
 
   macos-package-smoke:
     name: macOS Apple Silicon package smoke
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: macos-15
 
     steps:
@@ -96,4 +138,3 @@ jobs:
       - name: Build Tauri app
         working-directory: desktop
         run: npm run tauri build -- --target aarch64-apple-darwin
-

@@ -4,6 +4,16 @@ Local-first desktop app for indexing YouTube channel transcripts, searching them
 
 The whole stack runs locally: SQLite for storage, fastembed (ONNX) for embeddings, yt-dlp for transcript fetch. No cloud accounts, no auth, no recurring infrastructure cost.
 
+## Download
+
+Download the latest macOS Apple Silicon build from [GitHub Releases](https://github.com/vericontext/tube-agent/releases/latest).
+
+The app is currently unsigned. After dragging Tube Agent to Applications, run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Tube\ Agent.app
+```
+
 ![Channels list](docs/screenshots/03-channels-list.png)
 
 ![Channel detail with video stats](docs/screenshots/04-channel-detail.png)
