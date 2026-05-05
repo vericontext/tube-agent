@@ -37,6 +37,7 @@ Tests: `.venv/bin/pytest tests/ -q`
 - New code goes through the API + storage abstractions — don't write directly to disk from the routes.
 - Reports / generated docs are written in English.
 - All settings flow through `tube_agent/config.py` and `pydantic-settings` (`extra="ignore"` so legacy `.env` keys are tolerated).
+- Release/version rules are shared with other agents: update `CHANGELOG.md`, follow `docs/release.md`, and keep the three desktop version files in sync for releases.
 
 ## Memory of past work (recent)
 

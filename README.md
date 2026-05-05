@@ -28,7 +28,7 @@ The first run that touches semantic search downloads the embedding model (~220 M
 
 ### A. Desktop app (Tauri, recommended)
 
-Tauri 2 + React shell that spawns the Python core as a sidecar. See [`desktop/README.md`](desktop/README.md) for the full dev / release flow.
+Tauri 2 + React shell that spawns the Python core as a sidecar. See [`desktop/README.md`](desktop/README.md) for local dev/build details, [`docs/release.md`](docs/release.md) for the GitHub Actions release flow, and [`CHANGELOG.md`](CHANGELOG.md) for release history.
 
 ```bash
 cd desktop
