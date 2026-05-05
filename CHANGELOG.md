@@ -22,6 +22,7 @@ Every release tag must match the desktop app version and have a matching
 - Desktop UI for summary generation, summary viewing, and channel overview viewing.
 - GitHub Actions CI for Python tests, frontend build, and macOS Apple Silicon package smoke builds.
 - Tag-triggered GitHub Actions release workflow that creates an unsigned Apple Silicon draft release.
+- CI-success auto-tag workflow that drafts a release when `main` has a new desktop version.
 - Desktop version consistency check for `package.json`, `tauri.conf.json`, and `Cargo.toml`.
 - Release guide with version bump, changelog, and unsigned macOS install rules.
 

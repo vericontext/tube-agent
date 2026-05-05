@@ -1,0 +1,118 @@
+name: Auto Version Release
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-version-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  release-if-version-untagged:
+    name: Auto tag and draft release
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve desktop version
+        id: version
+        run: |
+          git fetch --tags --force
+          VERSION=$(python3 scripts/check_desktop_version.py --print)
+          TAG="v${VERSION}"
+          python3 scripts/check_desktop_version.py "${TAG}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether release tag already exists
+        id: tag
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release tag ${{ steps.version.outputs.tag }} already exists; skipping automatic release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release tag
+        if: steps.tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.tag }}" "${{ github.event.workflow_run.head_sha }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - uses: actions/setup-python@v5
+        if: steps.tag.outputs.exists == 'false'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        if: steps.tag.outputs.exists == 'false'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Rust stable
+        if: steps.tag.outputs.exists == 'false'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build artifacts
+        if: steps.tag.outputs.exists == 'false'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Install Python desktop dependencies
+        if: steps.tag.outputs.exists == 'false'
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e ".[desktop]"
+
+      - name: Install frontend dependencies
+        if: steps.tag.outputs.exists == 'false'
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build sidecar
+        if: steps.tag.outputs.exists == 'false'
+        run: bash desktop/scripts/build-sidecar.sh
+
+      - name: Build and upload draft release
+        if: steps.tag.outputs.exists == 'false'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tauriScript: npm run tauri
+          args: --target aarch64-apple-darwin
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: Tube Agent ${{ steps.version.outputs.tag }}
+          releaseBody: |
+            Unsigned Apple Silicon preview build.
+
+            Built automatically after CI passed on main for ${{ steps.version.outputs.tag }}.
+
+            Download the DMG, install Tube Agent, and follow the Gatekeeper workaround in the release guide if macOS blocks first launch.
+          releaseDraft: true
+          prerelease: false

@@ -24,10 +24,8 @@ def _read_toml(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
-def main() -> int:
-    expected = sys.argv[1].removeprefix("v") if len(sys.argv) > 1 else None
-
-    versions = {
+def _desktop_versions() -> dict[str, str]:
+    return {
         "desktop/package.json": _read_json(ROOT / "desktop/package.json")["version"],
         "desktop/src-tauri/tauri.conf.json": _read_json(
             ROOT / "desktop/src-tauri/tauri.conf.json"
@@ -36,6 +34,14 @@ def main() -> int:
             "package"
         ]["version"],
     }
+
+
+def main() -> int:
+    print_only = "--print" in sys.argv
+    args = [arg for arg in sys.argv[1:] if arg != "--print"]
+    expected = args[0].removeprefix("v") if args else None
+
+    versions = _desktop_versions()
 
     unique_versions = set(versions.values())
     errors: list[str] = []
@@ -56,7 +62,7 @@ def main() -> int:
         print("\n".join(errors), file=sys.stderr)
         return 1
 
-    print(f"desktop version ok: {actual}")
+    print(actual if print_only else f"desktop version ok: {actual}")
     return 0
 
 

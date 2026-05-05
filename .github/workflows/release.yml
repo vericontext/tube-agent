@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, for example v0.0.2
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - uses: actions/setup-python@v5
         with:
@@ -44,7 +52,7 @@ jobs:
           .venv/bin/python -m pip install -e ".[desktop]"
 
       - name: Check tag matches desktop version
-        run: .venv/bin/python scripts/check_desktop_version.py "${GITHUB_REF_NAME}"
+        run: .venv/bin/python scripts/check_desktop_version.py "${{ github.event.inputs.tag || github.ref_name }}"
 
       - name: Install frontend dependencies
         working-directory: desktop
@@ -61,12 +69,11 @@ jobs:
           projectPath: desktop
           tauriScript: npm run tauri
           args: --target aarch64-apple-darwin
-          tagName: ${{ github.ref_name }}
-          releaseName: Tube Agent ${{ github.ref_name }}
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: Tube Agent ${{ github.event.inputs.tag || github.ref_name }}
           releaseBody: |
             Unsigned Apple Silicon preview build.
 
             Download the DMG, install Tube Agent, and follow the Gatekeeper workaround in the release guide if macOS blocks first launch.
           releaseDraft: true
           prerelease: false
-
