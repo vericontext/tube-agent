@@ -12,6 +12,7 @@ from tube_agent.models.schemas import (
     ChannelListResponse,
     JobResponse,
 )
+from tube_agent.api.routes.system import wait_for_embedding_ready
 from tube_agent.services.embeddings import get_default_provider
 from tube_agent.services.pipeline import run_full_pipeline
 from tube_agent.storage.postgres import PostgresStorage
@@ -28,6 +29,11 @@ def _run_pipeline_job(job_id: str, handle: str, body: ChannelCreate, storage: Po
     try:
         embedder = None
         if body.fetch_transcripts:
+            # First-run launches start downloading the embedding model in the
+            # background; wait for it so the very first index produces
+            # embeddings instead of silently skipping them.
+            storage.update_job(job_id, {"progress": {"step": "waiting_for_index"}})
+            wait_for_embedding_ready(timeout=90.0)
             try:
                 embedder = get_default_provider()
             except Exception as e:

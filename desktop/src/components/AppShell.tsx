@@ -1,14 +1,22 @@
-import { Activity, Search } from "lucide-react";
+import { Activity, Search, Settings } from "lucide-react";
 import { Link, Outlet, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Input } from "@/components/ui/input";
 import { SemanticReadinessPill } from "@/components/SemanticReadinessPill";
+import { api } from "@/lib/api";
 
 export function AppShell() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.system.getSettings(),
+  });
+  const needsAttention = settings?.youtube_api_key === "unset";
 
   // Keep the input in sync when navigating directly to /search?q=...
   useEffect(() => {
@@ -42,6 +50,16 @@ export function AppShell() {
               />
             </div>
           </form>
+          <Link
+            to="/settings"
+            className="relative inline-flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Settings"
+          >
+            <Settings className="size-5" />
+            {needsAttention && (
+              <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-red-500 ring-2 ring-background" />
+            )}
+          </Link>
         </div>
       </header>
       <main className="flex-1">

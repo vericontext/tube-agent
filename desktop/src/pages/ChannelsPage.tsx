@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import { AddChannelDialog } from "@/components/AddChannelDialog";
+import { MissingKeysBanner } from "@/components/MissingKeysBanner";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatNumber } from "@/lib/format";
 
@@ -15,6 +16,7 @@ export function ChannelsPage() {
 
   return (
     <div className="container mx-auto px-6 py-10 space-y-6">
+      <MissingKeysBanner />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Channels</h1>
         <AddChannelDialog />

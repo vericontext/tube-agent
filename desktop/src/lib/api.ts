@@ -5,6 +5,10 @@ import type {
   ChannelResponse,
   JobResponse,
   SearchResponse,
+  SettingsStatus,
+  SettingsTest,
+  SettingsTestResult,
+  SettingsUpdate,
   TranscriptResponse,
   VideoListResponse,
   VideoResponse,
@@ -34,7 +38,13 @@ export async function pingHealth(): Promise<boolean> {
   }
 }
 
-export async function waitForReady(maxAttempts = 30, intervalMs = 500): Promise<boolean> {
+/**
+ * Poll {@link pingHealth} until the sidecar responds or we hit ``maxAttempts``.
+ * Default budget is 60 s — release builds extract a PyInstaller --onefile
+ * bootstrap and import fastapi/uvicorn/fastembed before binding the port,
+ * which routinely takes 30–40 s on a clean machine.
+ */
+export async function waitForReady(maxAttempts = 120, intervalMs = 500): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
     if (await pingHealth()) return true;
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -115,6 +125,11 @@ export const api = {
         channel,
         limit: String(limit),
       }),
+  },
+  system: {
+    getSettings: () => get<SettingsStatus>("/system/settings"),
+    updateSettings: (body: SettingsUpdate) => post<SettingsStatus>("/system/settings", body),
+    testKey: (body: SettingsTest) => post<SettingsTestResult>("/system/settings/test", body),
   },
 };
 

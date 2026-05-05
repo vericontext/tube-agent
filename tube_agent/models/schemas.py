@@ -219,3 +219,26 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
     total: int
     query: str
+
+
+# --- Settings ---
+
+class SettingsStatus(BaseModel):
+    youtube_api_key: str  # "set" | "unset"
+    gemini_api_key: str
+    app_data_dir: str
+
+
+class SettingsUpdate(BaseModel):
+    youtube_api_key: str | None = None
+    gemini_api_key: str | None = None
+
+
+class SettingsTest(BaseModel):
+    provider: str  # "youtube" | "gemini"
+    api_key: str
+
+
+class SettingsTestResult(BaseModel):
+    ok: bool
+    error: str | None = None

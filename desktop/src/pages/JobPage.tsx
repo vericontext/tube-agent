@@ -47,7 +47,11 @@ export function JobPage() {
                 <CircleAlert className="size-5 text-destructive" />
               )}
               <div>
-                <p className="font-medium capitalize">{job.status}</p>
+                <p className="font-medium capitalize">
+                  {job.progress?.step === "waiting_for_index"
+                    ? "Waiting for semantic search index…"
+                    : job.status}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   @{String(job.config?.handle ?? "")} · max {String(job.config?.max_videos ?? "—")} videos
                 </p>

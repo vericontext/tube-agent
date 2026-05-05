@@ -5,6 +5,7 @@ import { ChannelsPage } from "@/pages/ChannelsPage";
 import { ChannelDetailPage } from "@/pages/ChannelDetailPage";
 import { JobPage } from "@/pages/JobPage";
 import { SearchPage } from "@/pages/SearchPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { VideoDetailPage } from "@/pages/VideoDetailPage";
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="/channels/:handle/videos/:videoId" element={<VideoDetailPage />} />
           <Route path="/jobs/:id" element={<JobPage />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

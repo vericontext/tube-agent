@@ -11,9 +11,15 @@ interface Props {
 
 export function SidecarGate({ children }: Props) {
   const [status, setStatus] = useState<Status>("starting");
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    const startedAt = Date.now();
+    const tick = setInterval(() => {
+      if (!cancelled) setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+
     (async () => {
       const ok = await waitForReady();
       if (cancelled) return;
@@ -21,6 +27,7 @@ export function SidecarGate({ children }: Props) {
     })();
     return () => {
       cancelled = true;
+      clearInterval(tick);
     };
   }, []);
 
@@ -34,10 +41,17 @@ export function SidecarGate({ children }: Props) {
       </div>
 
       {status === "starting" && (
-        <p className="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" />
-          Starting backend…
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="size-4 animate-spin" />
+            Starting backend…
+          </p>
+          {elapsed >= 5 && (
+            <p className="text-xs text-muted-foreground/80">
+              First launch can take up to ~30 seconds while the model loads.
+            </p>
+          )}
+        </div>
       )}
 
       {status === "failed" && (

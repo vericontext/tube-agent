@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import {
@@ -21,6 +21,12 @@ export function AddChannelDialog() {
   const [open, setOpen] = useState(false);
   const [handle, setHandle] = useState("");
   const [maxVideos, setMaxVideos] = useState("100");
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.system.getSettings(),
+  });
+  const youtubeKeyMissing = settings?.youtube_api_key === "unset";
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -52,6 +58,18 @@ export function AddChannelDialog() {
         <DialogHeader>
           <DialogTitle>Index a YouTube channel</DialogTitle>
         </DialogHeader>
+        {youtubeKeyMissing ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              You need to add a YouTube Data API key before indexing channels. The key is stored on this device only.
+            </p>
+            <Button asChild className="w-full">
+              <Link to="/settings" onClick={() => setOpen(false)}>
+                Open settings
+              </Link>
+            </Button>
+          </div>
+        ) : (
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -90,6 +108,7 @@ export function AddChannelDialog() {
             {mutation.isPending ? "Starting…" : "Start indexing"}
           </Button>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

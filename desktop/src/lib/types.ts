@@ -102,3 +102,24 @@ export interface ChannelCreateRequest {
   fetch_transcripts?: boolean;
   transcript_languages?: string[];
 }
+
+export interface SettingsStatus {
+  youtube_api_key: "set" | "unset";
+  gemini_api_key: "set" | "unset";
+  app_data_dir: string;
+}
+
+export interface SettingsUpdate {
+  youtube_api_key?: string;
+  gemini_api_key?: string;
+}
+
+export interface SettingsTest {
+  provider: "youtube" | "gemini";
+  api_key: string;
+}
+
+export interface SettingsTestResult {
+  ok: boolean;
+  error: string | null;
+}
