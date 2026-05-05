@@ -8,11 +8,13 @@ The whole stack runs locally: SQLite for storage, fastembed (ONNX) for embedding
 
 Download the latest macOS Apple Silicon build from [GitHub Releases](https://github.com/vericontext/tube-agent/releases/latest).
 
-The app is currently unsigned. After dragging Tube Agent to Applications, run:
+The app is currently unsigned. If macOS says “Tube Agent is damaged and can’t be opened,” do not launch it from the DMG. Drag Tube Agent to Applications, then run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Tube\ Agent.app
 ```
+
+Then open Tube Agent from Applications or Spotlight.
 
 ![Channels list](docs/screenshots/03-channels-list.png)
 

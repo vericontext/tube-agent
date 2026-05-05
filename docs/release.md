@@ -109,7 +109,12 @@ workflow manually from GitHub Actions with the existing tag, for example
 ## Unsigned macOS Install
 
 Until Apple Developer signing and notarization are configured, macOS Gatekeeper
-will block the app on first launch. After dragging the app to Applications, run:
+will block the app on first launch. It may say “Tube Agent is damaged and can’t
+be opened” and ask you to eject the disk image. This is the quarantine path for
+the unsigned build.
+
+Do not launch the app directly from the DMG. Drag Tube Agent to Applications,
+then run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Tube\ Agent.app
