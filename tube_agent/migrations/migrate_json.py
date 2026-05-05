@@ -14,7 +14,7 @@ from tube_agent.config import get_settings
 from tube_agent.storage.postgres import PostgresStorage
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def load_json(path: Path) -> dict | list | None:
@@ -24,9 +24,9 @@ def load_json(path: Path) -> dict | list | None:
         return json.load(f)
 
 
-def migrate_channel(handle: str, storage: PostgresStorage) -> dict | None:
+def migrate_channel(handle: str, storage: PostgresStorage, base_dir: Path) -> dict | None:
     """Migrate a single channel's data from JSON files into the database."""
-    data_dir = BASE_DIR / "data" / handle
+    data_dir = base_dir / "data" / handle
     if not data_dir.exists():
         print(f"  No data found for @{handle}")
         return None
@@ -93,7 +93,7 @@ def migrate_channel(handle: str, storage: PostgresStorage) -> dict | None:
         print(f"  Migrated {summary_count} summaries")
 
     # 5. Reports
-    output_dir = BASE_DIR / "output" / handle
+    output_dir = base_dir / "output" / handle
     report_count = 0
     if output_dir.exists():
         for md_file in output_dir.glob("*.md"):
@@ -116,28 +116,34 @@ def main():
     parser = argparse.ArgumentParser(description="Migrate JSON data to the SQL database (SQLite by default)")
     parser.add_argument("--handle", help="Specific channel handle to migrate")
     parser.add_argument("--all", action="store_true", help="Migrate all channels")
+    parser.add_argument(
+        "--base-dir",
+        default=str(REPO_ROOT),
+        help="Directory containing data/ and output/ subtrees (default: repo root)",
+    )
     args = parser.parse_args()
 
     if not args.handle and not args.all:
         parser.print_help()
         sys.exit(1)
 
+    base_dir = Path(args.base_dir).expanduser().resolve()
     settings = get_settings()
-    storage = PostgresStorage(settings.database_url)
+    storage = PostgresStorage(settings.resolve_database_url())
     storage.create_tables()
 
     if args.all:
-        data_dir = BASE_DIR / "data"
+        data_dir = base_dir / "data"
         if not data_dir.exists():
-            print("No data directory found")
+            print(f"No data directory found at {data_dir}")
             sys.exit(1)
         handles = [d.name for d in data_dir.iterdir() if d.is_dir()]
-        print(f"Migrating {len(handles)} channels...")
+        print(f"Migrating {len(handles)} channels from {base_dir}...")
         for handle in sorted(handles):
-            migrate_channel(handle, storage)
+            migrate_channel(handle, storage, base_dir)
     else:
         handle = args.handle.lstrip("@")
-        migrate_channel(handle, storage)
+        migrate_channel(handle, storage, base_dir)
 
     print("\nMigration complete!")
 

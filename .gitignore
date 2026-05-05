@@ -10,3 +10,13 @@ build/
 *.db
 *.sqlite3
 .playwright-mcp/
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/*.tsbuildinfo
+desktop/vite.config.js
+desktop/vite.config.d.ts
+build/sidecar-work/
+build/sidecar-dist/
+build/*.spec

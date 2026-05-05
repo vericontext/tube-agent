@@ -27,6 +27,9 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx",  # for TestClient
 ]
+desktop = [
+    "pyinstaller>=6.10",
+]
 
 [tool.setuptools.packages.find]
 include = ["scripts*", "tube_agent*"]
@@ -35,3 +38,4 @@ include = ["scripts*", "tube_agent*"]
 fetch-all = "scripts.fetch_all:main"
 tube-api = "tube_agent.cli:run_api"
 tube-migrate = "tube_agent.migrations.migrate_json:main"
+tube-agent-sidecar = "tube_agent.cli_sidecar:main"

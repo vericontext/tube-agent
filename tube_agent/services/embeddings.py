@@ -9,6 +9,7 @@ Alternative providers (Gemini API, etc.) are pluggable via the
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -37,11 +38,14 @@ class FastembedProvider(EmbeddingProvider):
 
     DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-    def __init__(self, model_name: str | None = None):
+    def __init__(self, model_name: str | None = None, cache_dir: "str | Path | None" = None):
         from fastembed import TextEmbedding
 
         self._model_name = model_name or self.DEFAULT_MODEL
-        self._model = TextEmbedding(model_name=self._model_name)
+        kwargs: dict = {"model_name": self._model_name}
+        if cache_dir is not None:
+            kwargs["cache_dir"] = str(cache_dir)
+        self._model = TextEmbedding(**kwargs)
         self._dimension = int(self._model.embedding_size)
 
     def embed(self, texts: Iterable[str]) -> np.ndarray:
@@ -100,11 +104,16 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         return self._dimension
 
 
-def build_provider(provider: str, model_name: str | None, api_key: str = "") -> EmbeddingProvider:
+def build_provider(
+    provider: str,
+    model_name: str | None,
+    api_key: str = "",
+    cache_dir: str | Path | None = None,
+) -> EmbeddingProvider:
     """Factory: build the configured embedding provider."""
     provider = provider.lower()
     if provider == "local":
-        return FastembedProvider(model_name)
+        return FastembedProvider(model_name, cache_dir=cache_dir)
     if provider == "gemini":
         return GeminiEmbeddingProvider(api_key=api_key, model_name=model_name)
     raise ValueError(f"Unknown embedding provider: {provider!r}")
@@ -125,10 +134,16 @@ def get_default_provider() -> EmbeddingProvider:
     from tube_agent.config import get_settings
 
     settings = get_settings()
+    cache_dir = (
+        settings.resolve_fastembed_cache_dir()
+        if settings.embedding_provider.lower() == "local"
+        else None
+    )
     _cached_default = build_provider(
         settings.embedding_provider,
         settings.embedding_model or None,
         api_key=settings.gemini_api_key,
+        cache_dir=cache_dir,
     )
     return _cached_default
 

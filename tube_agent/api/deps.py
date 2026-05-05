@@ -16,7 +16,7 @@ def get_storage() -> PostgresStorage:
     global _storage
     if _storage is None:
         settings = get_settings()
-        _storage = PostgresStorage(settings.database_url)
+        _storage = PostgresStorage(settings.resolve_database_url())
     return _storage
 
 
