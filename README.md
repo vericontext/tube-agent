@@ -238,3 +238,27 @@ data/{handle}/            CLI JSON output (legacy / migration source)
 output/{handle}/          CLI report output (legacy / migration source)
   reports/
 ```
+
+---
+
+## Why this exists
+
+I started this as a multi-tenant SaaS — Supabase, Celery, Cloudflare R2, Fly.io, the works — until it became hard to ignore that a hosted service that keeps scraped captions, comments, and AI summaries of other people's videos in a central database is sitting squarely on top of YouTube's "30-day cache only" rule for API data and yt-dlp's "automated means" prohibition. The legal risk surface for a *hosted* product is real; the risk surface for a tool that each user runs on their own machine, indexing their own selection of channels with their own API key, is roughly the same as yt-dlp itself.
+
+So this is the pivot: same Python core, but every install is its own copy. The SQLite DB lives in your OS app data dir, the embeddings live next to it, the YouTube key is yours. There's no central server to send a takedown to.
+
+A few non-obvious technical decisions that came out of that constraint:
+
+- **Embeddings via fastembed (ONNX), not sentence-transformers.** ONNX-Runtime is ~80% smaller than the equivalent PyTorch stack, and the multilingual MiniLM model (`paraphrase-multilingual-MiniLM-L12-v2`, ~220 MB) does well on Korean and English transcripts in the same vector space. First-run download is from Hugging Face Hub — no API keys, no signup.
+- **Vector search in numpy, not sqlite-vec.** Python's stdlib `sqlite3` ships without `enable_load_extension` on most distributions (pyenv, system Python on macOS), so `sqlite-vec` would have made the install instructions much messier. With L2-normalised float32 vectors stored as BLOBs, in-memory cosine via `matrix @ q` is fast enough for tens of thousands of segments. The "we'll switch to FAISS or sqlite-vec when the corpus blows past that" path stays open, but isn't day-one work.
+- **Tauri 2 + Python sidecar over Electron.** The Rust shell is ~30 MB; the bundled FastAPI sidecar (PyInstaller `--onefile`, fastembed + onnxruntime + yt-dlp + uvicorn) lands at ~72 MB. Total install is well under what shipping its own Chromium would cost.
+- **Sidecar over HTTP, not Tauri's stdio IPC.** Keeps FastAPI as-is (no protocol translation layer), unblocks `curl` + browser DevTools for debugging, and the random-port + Tauri command pattern stays firewall-friendly.
+- **Process-group cleanup for the sidecar.** PyInstaller `--onefile` actually exec's a child Python interpreter under a small bootstrap; killing the bootstrap parent leaves the child as an orphan. Fix: spawn the sidecar with `cmd.process_group(0)` on Unix and send `SIGTERM` to the negative PID from Rust on `RunEvent::Exit` so the whole tree is reaped.
+
+There's no monetisation plan — the only model that *would* monetise (captions in a central database) is exactly what this pivot rejects. The code is here so it isn't wasted, and so the trail of decisions is documented somewhere durable.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
