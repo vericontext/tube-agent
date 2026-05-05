@@ -344,7 +344,7 @@ class LocalStorage(StorageBackend):
 
     # --- Reports ---
 
-    def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:
+    def save_report(self, channel_id: str, report_type: str, content_md: str) -> Any:
         handle = self._resolve_handle(channel_id)
         paths = self._paths(handle)
         self._ensure_dirs(handle)
@@ -352,7 +352,7 @@ class LocalStorage(StorageBackend):
         report_path.write_text(content_md, encoding="utf-8")
         return str(report_path)
 
-    def get_report(self, channel_id: str, report_type: str, tenant_id: str | None = None) -> dict | None:
+    def get_report(self, channel_id: str, report_type: str) -> dict | None:
         handle = self._resolve_handle(channel_id)
         paths = self._paths(handle)
         report_path = paths["output"] / "reports" / f"{report_type}.md"
@@ -372,7 +372,7 @@ class LocalStorage(StorageBackend):
             }
         return None
 
-    def list_reports(self, channel_id: str, tenant_id: str | None = None) -> list[dict]:
+    def list_reports(self, channel_id: str) -> list[dict]:
         handle = self._resolve_handle(channel_id)
         paths = self._paths(handle)
         reports = []

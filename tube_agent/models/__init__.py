@@ -19,9 +19,6 @@ from tube_agent.models.database import (
     VideoSummary,
     SummarySection,
     SummaryBullet,
-    Tenant,
-    User,
-    TenantChannel,
     ChannelReport,
     Job,
 )

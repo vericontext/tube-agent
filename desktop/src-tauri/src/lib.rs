@@ -1,12 +1,16 @@
 // Tauri shell that spawns the FastAPI sidecar and exposes its port to the
 // webview. In debug builds we run the sidecar straight from the project venv
-// for fast iteration; release builds expect the PyInstaller-built bundle on
-// disk (see desktop/scripts/build-sidecar.sh).
+// for fast iteration; release builds use the PyInstaller-built binary that
+// `desktop/scripts/build-sidecar.sh` writes into Contents/MacOS/.
 
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 use tauri::{Manager, RunEvent, State};
 
@@ -36,10 +40,11 @@ fn repo_root() -> PathBuf {
         .unwrap_or(manifest_dir)
 }
 
-fn spawn_sidecar(port: u16, app_data_dir: &PathBuf) -> std::io::Result<Child> {
+fn build_command(port: u16, app_data_dir: &PathBuf) -> Command {
     let port_str = port.to_string();
     let dir_str = app_data_dir.to_string_lossy().to_string();
 
+    let mut cmd: Command;
     if cfg!(debug_assertions) {
         // Dev: invoke the module via the project venv.
         let root = repo_root();
@@ -50,39 +55,63 @@ fn spawn_sidecar(port: u16, app_data_dir: &PathBuf) -> std::io::Result<Child> {
             port_str,
             dir_str
         );
-        Command::new(&python)
-            .current_dir(&root)
-            .args([
-                "-m",
-                "tube_agent.cli_sidecar",
-                "--port",
-                &port_str,
-                "--app-data-dir",
-                &dir_str,
-            ])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
+        cmd = Command::new(&python);
+        cmd.current_dir(&root)
+            .args(["-m", "tube_agent.cli_sidecar"]);
     } else {
-        // Release: PyInstaller-built sidecar lives next to the bundled
-        // resources. Tauri exposes the binary path via env var when bundled
-        // through `bundle.externalBin`, but we resolve manually here.
-        let exe = std::env::current_exe()?;
+        // Release: PyInstaller-built sidecar lives next to the main binary
+        // inside the .app bundle (Contents/MacOS/tube-agent-sidecar).
+        let exe = std::env::current_exe().expect("could not resolve current_exe");
         let bin = exe
             .parent()
             .map(|p| p.join("tube-agent-sidecar"))
             .unwrap_or_else(|| PathBuf::from("tube-agent-sidecar"));
-        Command::new(bin)
-            .args([
-                "--port",
-                &port_str,
-                "--app-data-dir",
-                &dir_str,
-            ])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
+        cmd = Command::new(bin);
     }
+
+    cmd.args(["--port", &port_str, "--app-data-dir", &dir_str])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // Put the sidecar in its own process group so we can SIGTERM the entire
+    // group on quit. PyInstaller's --onefile bootstrap spawns a child Python
+    // interpreter; without a group kill, that child outlives the parent.
+    #[cfg(unix)]
+    {
+        cmd.process_group(0);
+    }
+    cmd
+}
+
+fn spawn_sidecar(port: u16, app_data_dir: &PathBuf) -> std::io::Result<Child> {
+    build_command(port, app_data_dir).spawn()
+}
+
+#[cfg(unix)]
+fn terminate_sidecar(child: &mut Child) {
+    let pid = child.id() as i32;
+    // Negative PID targets the whole process group, killing both the
+    // PyInstaller bootstrap and the actual Python interpreter beneath it.
+    unsafe {
+        libc::kill(-pid, libc::SIGTERM);
+    }
+    // Give it a moment to exit gracefully, then escalate.
+    for _ in 0..20 {
+        if let Ok(Some(_)) = child.try_wait() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+    }
+    let _ = child.wait();
+}
+
+#[cfg(not(unix))]
+fn terminate_sidecar(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -99,16 +128,12 @@ pub fn run() {
             let port = pick_free_port()?;
             let child = spawn_sidecar(port, &app_data_dir)?;
 
+            let pid = child.id();
             app.manage(SidecarPort(port));
             app.manage(SidecarChild(Mutex::new(Some(child))));
             eprintln!(
                 "sidecar pid={} port={} app_data_dir={}",
-                app.state::<SidecarChild>()
-                    .0
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.as_ref().map(|c| c.id()))
-                    .unwrap_or_default(),
+                pid,
                 port,
                 app_data_dir.display()
             );
@@ -122,8 +147,7 @@ pub fn run() {
                 if let Some(state) = app_handle.try_state::<SidecarChild>() {
                     if let Ok(mut guard) = state.0.lock() {
                         if let Some(mut child) = guard.take() {
-                            let _ = child.kill();
-                            let _ = child.wait();
+                            terminate_sidecar(&mut child);
                         }
                     }
                 }

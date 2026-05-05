@@ -3,6 +3,9 @@ dist
 dist-ssr
 *.local
 
+# PyInstaller-built sidecar binaries — rebuilt locally via scripts/build-sidecar.sh
+src-tauri/binaries/tube-agent-sidecar-*
+
 # Logs
 logs
 *.log

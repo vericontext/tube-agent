@@ -1,63 +1,46 @@
-# Tube Agent - YouTube Channel Analysis System
+# Tube Agent
 
-## Setup
-- Python venv: `.venv`
-- Install: `python -m venv .venv && .venv/bin/pip install -e .`
-- API keys: set `YOUTUBE_API_KEY`, `GEMINI_API_KEY` in `.env`
-- Database: set `DATABASE_URL` in `.env` (PostgreSQL)
+Local-first desktop app for indexing YouTube channel transcripts and searching them by keyword + semantic meaning. SQLite + fastembed (ONNX) on-device, optional Gemini multimodal analysis layered on top.
 
-## Running
+## Run
 
-### CLI Mode (original)
-- Data collection: `.venv/bin/python -m scripts.fetch_all @handle`
-- Flags: `--skip-comments`, `--skip-summaries`, `--max-videos 100`, `--summary-max N`
+```bash
+# CLI / API (headless)
+.venv/bin/python -m scripts.fetch_all @handle    # index a channel
+.venv/bin/tube-api --reload                       # FastAPI on :8000
 
-### API Server Mode
-- Start: `.venv/bin/tube-api --reload` or `uvicorn tube_agent.api.main:app --reload`
-- Docker: `docker-compose up` (starts API + PostgreSQL + Redis + Celery worker)
+# Desktop (Tauri)
+cd desktop && npm run tauri dev                   # dev: spawns sidecar from .venv
+cd desktop && bash scripts/build.sh               # release: PyInstaller + tauri build
+```
 
-### Data Migration
-- JSON → PostgreSQL: `.venv/bin/tube-migrate --all` or `--handle ycombinator`
+Tests: `.venv/bin/pytest tests/ -q`
 
-## Architecture
+## Layout
 
-### Packages
-- `scripts/` — Original CLI data collection scripts (unchanged)
-- `tube_agent/` — Production SaaS package
-  - `tube_agent/models/` — Pydantic schemas + SQLAlchemy ORM
-  - `tube_agent/storage/` — Storage abstraction (LocalStorage, PostgresStorage)
-  - `tube_agent/services/` — YouTube client, Gemini client, pipeline orchestration
-  - `tube_agent/api/` — FastAPI endpoints
-  - `tube_agent/tasks/` — Celery async task definitions
-  - `tube_agent/migrations/` — JSON → DB migration scripts
-
-### Storage Abstraction
-- `StorageBackend` ABC with `LocalStorage` (JSON files) and `PostgresStorage` (SQLAlchemy)
-- CLI uses `LocalStorage`, API uses `PostgresStorage`
-- Shared data (channels/videos/summaries) is tenant-independent
-
-### Data Structure (CLI mode)
-Data is organized per channel handle:
-- `data/{handle}/raw/` - Raw API responses (channel.json, videos.json, comments/, summaries/)
-- `data/{handle}/processed/` - Enriched/summarized data
-- `output/{handle}/` - Analysis results and reports
-- `output/{handle}/reports/` - Generated reports
-
-Transcripts, comments, and summaries support skip logic — already-fetched files are not re-downloaded on re-run.
-
-## API Endpoints
-- `POST /api/v1/channels` — Start channel analysis pipeline
-- `GET  /api/v1/channels` — List channels
-- `GET  /api/v1/channels/{handle}` — Channel details
-- `GET  /api/v1/channels/{handle}/videos` — Video list (sort/filter/paginate)
-- `GET  /api/v1/channels/{handle}/videos/{id}/summary` — Video summary
-- `GET  /api/v1/channels/{handle}/reports` — List reports
-- `GET  /api/v1/channels/{handle}/reports/{type}` — Get report
-- `GET  /api/v1/search?q=keyword` — Search videos/summaries
-- `GET  /api/v1/jobs/{id}` — Job status
-- `GET  /health` — Health check
+- `tube_agent/` — Python core
+  - `services/pipeline.py` — orchestrates the full pipeline (called by CLI + API + sidecar)
+  - `services/embeddings.py` — `EmbeddingProvider` ABC + Fastembed (default) + Gemini
+  - `services/transcripts.py` — yt-dlp caption extractor
+  - `storage/postgres.py` — SQLAlchemy ORM (works with SQLite or Postgres despite the name)
+  - `api/main.py` + `api/routes/` — FastAPI endpoints
+  - `cli_sidecar.py` — Tauri sidecar entry (uvicorn programmatic runner)
+  - `config.py` — `Settings.resolve_app_data_dir()` returns `~/Library/Application Support/tube-agent` (mac default)
+- `scripts/fetch_all.py` — CLI orchestrator
+- `desktop/` — Tauri 2 + Vite + React 19 + shadcn (see `desktop/README.md`)
+- `tests/` — pytest, in-memory SQLite via `StaticPool`
 
 ## Conventions
-- All reports are written in English
-- Python scripts are in `scripts/` package
-- Sub-agents in `.claude/agents/`, Skills in `.claude/skills/`
+
+- Default flow indexes transcripts only. Comments + Gemini summaries are opt-in (`--with-comments`, `--with-summaries`).
+- `APP_DATA_DIR=/path` overrides the per-OS default; `DATABASE_URL=...` overrides the derived SQLite path.
+- New code goes through the API + storage abstractions — don't write directly to disk from the routes.
+- Reports / generated docs are written in English.
+- All settings flow through `tube_agent/config.py` and `pydantic-settings` (`extra="ignore"` so legacy `.env` keys are tolerated).
+
+## Memory of past work (recent)
+
+- Cloud removal pivot: dropped Supabase/Celery/Redis/R2/Fly.io. Multi-tenant schema removed in a follow-up.
+- Caption-based indexing (yt-dlp) is the primary path; Gemini multimodal is opt-in and slow/expensive.
+- Local semantic search uses fastembed `paraphrase-multilingual-MiniLM-L12-v2` (220 MB, downloaded on first run).
+- Tauri release builds spawn the sidecar as a process group so children get cleaned up on quit.

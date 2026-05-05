@@ -1,224 +1,127 @@
 # Tube Agent
 
-YouTube channel transcript indexing and AI-powered video analysis system.
+Local-first desktop app for indexing YouTube channel transcripts and searching them by keyword **or** semantic meaning, on-device. Optional Gemini multimodal analysis layered on top for deeper per-video summaries and channel reports.
 
-Collects channel metadata, video lists, and timestamped transcripts so trusted YouTube channels can be searched quickly. Gemini summaries, comments, and reports remain available as optional deeper analysis.
+The whole stack runs locally: SQLite for storage, fastembed (ONNX) for embeddings, yt-dlp for transcript fetch. No cloud accounts, no auth, no recurring infrastructure cost.
 
 ## Setup
 
 ```bash
-# 1. Create Python virtual environment and install packages
+# 1. Python venv + install
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install -e ".[dev]"
 
-# 2. Configure API keys
+# 2. API keys
 cp .env.example .env
-# Add the following keys to the .env file:
-#   YOUTUBE_API_KEY=...   (from Google Cloud Console)
-#   GEMINI_API_KEY=...    (from Google AI Studio)
+# Required:
+#   YOUTUBE_API_KEY=...   from Google Cloud Console
+#   GEMINI_API_KEY=...    from Google AI Studio  (only needed for summaries / reports)
 ```
+
+The first run that touches semantic search downloads the embedding model (~220 MB) into the OS app data dir. Subsequent runs are instant.
+
+## Two ways to use it
+
+### A. Desktop app (Tauri, recommended)
+
+Tauri 2 + React shell that spawns the Python core as a sidecar. See [`desktop/README.md`](desktop/README.md) for the full dev / release flow.
+
+```bash
+cd desktop
+npm install
+npm run tauri dev          # native window, sidecar spawned automatically
+# or:
+bash scripts/build.sh      # PyInstaller sidecar + Tauri bundle (.dmg)
+```
+
+### B. CLI + API (headless)
+
+```bash
+# index a channel (transcripts only by default — fast, low-quota)
+.venv/bin/python -m scripts.fetch_all @channel_handle
+
+# run the API server (semantic search + REST)
+.venv/bin/tube-api --reload
+```
+
+Data lives in the OS app data directory by default:
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/tube-agent/` |
+| Linux | `~/.local/share/tube-agent/` |
+| Windows | `%APPDATA%\tube-agent\` |
+
+Override with `APP_DATA_DIR=/some/path` in `.env`. Override the DB independently with `DATABASE_URL=sqlite:///./local.db` (or any SQLAlchemy URL).
+
+---
 
 ## Pipeline: Step-by-Step
 
-The full pipeline runs with a single command:
+The default pipeline is **fast and free**: channel metadata + video list + transcript captions + on-device embeddings. Comments, Gemini analysis, and reports are **opt-in** via flags.
 
-```bash
-.venv/bin/python -m scripts.fetch_all @channel_handle
-```
+### Stage 1 — Channel metadata
 
-Below is a detailed breakdown of what happens at each stage.
+`GET /youtube/v3/channels?forHandle={handle}` to fetch title, description, subscriber/view counts, and the uploads playlist ID.
 
----
+**Quota: 1 unit.**
 
-### Stage 1: Channel Metadata Collection
+### Stage 2 — Video list
 
-**What it does**: Calls the YouTube Data API `channels` endpoint with `forHandle` to retrieve the channel's core information.
+Pages `/youtube/v3/playlistItems` for the `--max-videos` newest uploads, then batches `/youtube/v3/videos` for full metadata (duration, view/like/comment counts, tags). Computes `durationSeconds`, `likeRatio`, `commentRatio`.
 
-**How it works**:
-1. Sends a request to `GET /youtube/v3/channels?forHandle={handle}&part=snippet,contentDetails,statistics,brandingSettings`
-2. Extracts from the response:
-   - **snippet**: channel title, description, country, published date
-   - **statistics**: subscriber count, total view count, total video count
-   - **contentDetails**: the `uploads` playlist ID (needed for Stage 2)
-3. Saves two files via the storage backend:
-   - `data/{handle}/raw/channel.json` — the raw API response
-   - `data/{handle}/processed/channel_summary.json` — a cleaned, flattened version with numeric fields parsed
+**Quota: ~1 unit per 50 items + 1 unit per details batch.**
 
-**API quota cost**: 1 unit
+### Stage 3 — Transcripts (default ON)
 
-**Output example** (channel_summary.json):
-```json
-{
-  "id": "UCkMrp1Nh7JBilHNjgrewStQ",
-  "handle": "eo_korea",
-  "title": "EO",
-  "subscriber_count": 2150000,
-  "view_count": 845000000,
-  "video_count": 1200,
-  "published_at": "2017-03-15T00:00:00Z"
-}
-```
+For each video:
 
----
+1. Skip if a transcript for one of the requested languages already exists.
+2. Use `yt-dlp` to enumerate caption tracks (manual + auto), pick the best language match in the priority list (`--transcript-languages`, default `ko,en`).
+3. Download the caption file (json3 / srv3 / vtt) and parse into segments with `start_seconds` / `end_seconds` / `text`.
+4. Merge adjacent segments up to ~520 chars per chunk for cleaner search hits.
+5. Save to the DB.
 
-### Stage 2: Video List Collection
+Transcript fetch is **parallel** (`--workers`, default 5). Disable with `--skip-transcripts`.
 
-**What it does**: Fetches the channel's uploaded videos with full metadata (title, stats, duration, tags).
+**No YouTube API quota cost** — yt-dlp uses the public YouTube site directly.
 
-**How it works**:
-1. Uses the `uploads` playlist ID from Stage 1
-2. Calls `GET /youtube/v3/playlistItems?playlistId={id}&part=snippet&maxResults=50` with pagination (50 items per page, using `nextPageToken`) until `--max-videos` is reached
-3. Collects all video IDs from the playlist response
-4. Calls `GET /youtube/v3/videos?id={comma-separated-ids}&part=snippet,contentDetails,statistics` in batches of 50 to get detailed metadata for each video
-5. For each video, computes enriched fields:
-   - `durationSeconds`: ISO 8601 duration (`PT1H2M3S`) parsed to seconds
-   - `viewCountFormatted`: human-readable format (`1.2M`, `45.3K`)
-   - `likeRatio`: `likeCount / viewCount`
-   - `commentRatio`: `commentCount / viewCount`
-6. Saves the enriched video list to `data/{handle}/processed/videos_enriched.json`
+### Stage 4 — Embeddings (default ON, runs after Stage 3)
 
-**API quota cost**: 1 unit per page of playlist items + 1 unit per batch of 50 video details
+For each transcript segment that doesn't yet have an embedding for the configured model:
 
-**Output**: A JSON array where each element contains:
-```json
-{
-  "videoId": "abc123",
-  "title": "Video Title",
-  "publishedAt": "2024-01-15T09:00:00Z",
-  "tags": ["startup", "tech"],
-  "duration": "PT25M30S",
-  "durationSeconds": 1530,
-  "viewCount": 1250000,
-  "viewCountFormatted": "1.3M",
-  "likeCount": 45000,
-  "commentCount": 1200,
-  "likeRatio": 0.036,
-  "commentRatio": 0.00096
-}
-```
+1. Pull text + segment id.
+2. Run a local fastembed model (default `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, multilingual incl. Korean) in batches of 64.
+3. Store the L2-normalised float32 vector as a BLOB keyed by `(segment_id, model_name)`.
+
+Search later does in-memory cosine similarity in numpy — fast for tens of thousands of segments, no SQLite extension required.
+
+Switch the embedding backend via `EMBEDDING_PROVIDER=gemini` + `EMBEDDING_MODEL=text-embedding-004`. Disable embedding entirely with `--skip-embeddings`.
+
+### Stage 5 — Comments (opt-in via `--with-comments`)
+
+`GET /youtube/v3/commentThreads` for top-level comments (max 100 per video, sorted by relevance). Comment authors are SHA-256-hashed before storage for privacy. **Quota: 1 unit per video.**
+
+### Stage 6 — Gemini multimodal analysis (opt-in via `--with-summaries`)
+
+Sends each video URL to Gemini 2.5 Flash. The model watches the video (frames + audio) and returns structured JSON: intro, bullets with timestamps, sectioned outline, topics, content type, target audience, tone, mentions, notable quotes. Results saved as `data/{handle}/raw/summaries/{videoId}.json` and to the DB.
+
+Limit how many videos to analyse with `--summary-max N`. Resolution `low|medium|high` controls token cost (~100K-180K tokens at low).
+
+### Stage 7 — Channel report (runs after summaries unless `--skip-report`)
+
+Aggregates statistics + summary intros and asks Gemini to produce a markdown overview report. Saved to `output/{handle}/reports/channel_overview.md`.
 
 ---
 
-### Stage 3: Comment Collection
+## Storage
 
-**What it does**: Fetches top-level comments for each video. Skippable with `--skip-comments`.
+| Backend | When Active |
+|---------|-------------|
+| `PostgresStorage` (SQLAlchemy ORM, despite the name works with SQLite or Postgres) | Default — uses `sqlite:///{APP_DATA_DIR}/tube_agent.db` unless `DATABASE_URL` is set explicitly |
+| `LocalStorage` (JSON tree under `data/{handle}/`) | CLI fallback when `DATABASE_URL` is empty and not derivable; used by `tube-migrate` for importing legacy JSON |
 
-**How it works**:
-1. Iterates through all videos from Stage 2
-2. For each video, checks `storage.has_comments(video_id)` — **skips if already collected** (idempotent)
-3. Calls `GET /youtube/v3/commentThreads?videoId={id}&part=snippet&maxResults=100&order=relevance&textFormat=plainText`
-4. Extracts from each comment thread:
-   - `author`: display name
-   - `text`: comment text (plain text, not HTML)
-   - `likeCount`: number of likes on the comment
-   - `publishedAt`: comment timestamp
-5. Saves to `data/{handle}/raw/comments/{videoId}.json`
-6. If the API returns 403 (comments disabled), silently skips that video
-
-**API quota cost**: 1 unit per video
-
-**Skip behavior**: Already-fetched comments are never re-downloaded. To refresh, delete the individual JSON file and re-run.
-
----
-
-### Stage 4: Gemini Video Analysis (Summaries)
-
-**What it does**: Sends each YouTube video URL directly to the Gemini API for multimodal analysis. Gemini watches the video (frames + audio) and produces a structured JSON summary. Skippable with `--skip-summaries`.
-
-**How it works**:
-1. Selects videos to analyze: all videos, or limited by `--summary-max N`
-2. For each video, checks `storage.has_summary(video_id)` — **skips if already analyzed**
-3. Constructs the Gemini API request:
-   - **Model**: `gemini-2.5-flash`
-   - **Input**: YouTube video URL as a `FileData` part (Gemini downloads and processes the video internally)
-   - **Media resolution**: configurable via `--media-resolution low|medium|high` (affects token count and cost)
-   - **Prompt**: A detailed analysis prompt requesting structured JSON output
-4. Gemini processes the video multimodally:
-   - Samples video frames at the specified resolution
-   - Processes audio/speech
-   - Returns analysis as a JSON string
-5. Parses the response:
-   - Strips markdown fences if present (` ```json ... ``` `)
-   - Handles control characters that would break JSON parsing
-   - Falls back to regex-based JSON repair if initial parse fails
-6. Saves to `data/{handle}/raw/summaries/{videoId}.json`
-7. Waits 2 seconds between API calls (rate limiting)
-
-**Token cost**: ~100K-180K input tokens per video at `low` resolution. Higher resolutions use more tokens.
-
-**Output structure** (per video):
-```json
-{
-  "videoId": "abc123",
-  "title": "Video Title",
-  "analysis": {
-    "summary_intro": "Speaker intro + topic overview (3-4 sentences)",
-    "summary_bullets": [
-      {
-        "title": "Key Point Title",
-        "timestamp": "03:45",
-        "description": "2-3 sentence summary of this key point"
-      }
-    ],
-    "sections": [
-      {
-        "timestamp": "00:00",
-        "title": "Section Title",
-        "content": "Detailed 3-5+ sentence description of this segment"
-      }
-    ],
-    "topics": ["startup", "fundraising", "product-market-fit"],
-    "content_type": "interview",
-    "target_audience": "Aspiring entrepreneurs and startup founders",
-    "tone": "educational",
-    "mentions": ["Y Combinator", "Paul Graham"],
-    "notable_quotes": ["Direct quote from the video"]
-  }
-}
-```
-
-**Three levels of reading depth**:
-- **summary_intro + summary_bullets**: Quick overview (~1 min read)
-- **sections**: Full detailed walkthrough (~5 min read)
-- **Watch the video**: Original source
-
----
-
-### Stage 5: Channel Report Generation
-
-**What it does**: Aggregates all collected data and generates a comprehensive markdown report using Gemini. Runs automatically after summaries unless `--skip-report` is set.
-
-**How it works**:
-1. Reads channel metadata from storage
-2. Loads all videos sorted by view count (up to 200)
-3. Collects AI summaries for the top 50 videos
-4. Aggregates statistics:
-   - **Top/bottom performing videos** (by view count)
-   - **Average engagement metrics** (views, likes, comments, ratios)
-   - **Topic distribution** from summary `topics` fields
-   - **Content type distribution** (interview, lecture, tutorial, etc.)
-   - **Monthly upload frequency** from video publish dates
-   - **Summary intros** (first 300 chars each, up to 30 videos)
-5. Sends the aggregated JSON payload to Gemini with a report generation prompt
-6. Gemini produces a markdown report covering:
-   - Channel Overview
-   - Content Strategy
-   - Performance Analysis
-   - Trend Analysis
-   - Summary-Based Insights
-   - Recommendations
-7. Saves to `output/{handle}/reports/channel_overview.md`
-
----
-
-## Storage Backends
-
-Data flows through a storage abstraction layer:
-
-| Backend | Primary Use | When Active |
-|---------|------------|-------------|
-| **LocalStorage** | JSON files on disk | CLI default when `DATABASE_URL` is unset |
-| **PostgresStorage** | SQLAlchemy ORM (works with SQLite or Postgres) | When `DATABASE_URL` starts with `sqlite` or `postgresql` (SQLite is the default) |
+The DB schema is created idempotently on first start — no migrations to run.
 
 ---
 
@@ -230,29 +133,33 @@ Data flows through a storage abstraction layer:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--max-videos N` | 100 | Maximum number of videos to fetch |
-| `--with-comments` | false | Fetch comments |
-| `--with-summaries` | false | Run Gemini video analysis |
-| `--skip-transcripts` | false | Skip transcript indexing |
-| `--transcript-languages` | `ko,en` | Comma-separated transcript language priority |
-| `--skip-report` | false | Skip report generation (Stage 5) |
-| `--summary-max N` | all | Limit how many videos Gemini analyzes |
-| `--media-resolution` | low | Gemini video resolution: `low`, `medium`, `high` |
+| `--max-videos N` | 100 | Newest N videos to fetch |
+| `--with-comments` | off | Fetch top-level comments |
+| `--with-summaries` | off | Run Gemini multimodal analysis |
+| `--skip-transcripts` | off | Skip transcript fetch |
+| `--skip-embeddings` | off | Skip on-device embedding generation |
+| `--skip-report` | off | Skip Gemini report generation (only matters with `--with-summaries`) |
+| `--transcript-languages` | `ko,en` | Comma-separated language priority |
+| `--summary-max N` | all | Cap how many videos go through Gemini |
+| `--media-resolution` | `low` | Gemini frame sampling: `low` / `medium` / `high` |
+| `--workers N` | 5 | Parallel workers for transcript + summary stages |
 
 ### Examples
 
 ```bash
-# Quick test: index transcripts for 20 videos
+# Default: latest 20 videos, transcripts + embeddings only (no Gemini)
 .venv/bin/python -m scripts.fetch_all @eo_korea --max-videos 20
 
-# Include Gemini summaries for 10 videos
+# Add Gemini summaries for 10 of them
 .venv/bin/python -m scripts.fetch_all @eo_korea \
-  --with-summaries --summary-max 10
+  --max-videos 20 --with-summaries --summary-max 10
 
-# Include comments and Gemini summaries
+# Full pass with comments + summaries
 .venv/bin/python -m scripts.fetch_all @eo_korea \
   --with-comments --with-summaries --summary-max 50
 ```
+
+---
 
 ## API Server Mode
 
@@ -260,7 +167,7 @@ Data flows through a storage abstraction layer:
 .venv/bin/tube-api --reload
 ```
 
-The pipeline runs in-process via FastAPI `BackgroundTasks`; no Redis or Celery worker required. Data is persisted to `./tube_agent.db` (SQLite) by default — override with `DATABASE_URL` to point at Postgres.
+In-process FastAPI with `BackgroundTasks` — no Celery, no Redis, single binary. Embedding model warms in the background on startup so the first semantic search isn't blocked on a 220 MB download.
 
 ### Endpoints
 
@@ -274,9 +181,14 @@ The pipeline runs in-process via FastAPI `BackgroundTasks`; no Redis or Celery w
 | GET | `/api/v1/channels/{handle}/videos/{id}/transcript` | Timestamped transcript |
 | GET | `/api/v1/channels/{handle}/reports` | List reports |
 | GET | `/api/v1/channels/{handle}/reports/{type}` | Get report |
-| GET | `/api/v1/search?q=keyword` | Search videos/summaries/transcripts |
+| GET | `/api/v1/search?q=...` | Keyword search across videos / summaries / transcripts (ILIKE) |
+| GET | `/api/v1/search/semantic?q=...&channel=...` | Semantic transcript search (cosine over embeddings) |
+| GET | `/api/v1/system/embedding-status` | Embedding model warmup state |
+| POST | `/api/v1/system/embedding/prepare` | Re-trigger warmup after a failure |
 | GET | `/api/v1/jobs/{id}` | Job status |
 | GET | `/health` | Health check |
+
+---
 
 ## Claude Code Integration
 
@@ -288,37 +200,41 @@ Skills and agents are available in Claude Code:
 /channel-report                     Generate a comprehensive English report from analysis results
 ```
 
+---
+
 ## Project Structure
 
 ```
 scripts/
-  fetch_all.py          CLI orchestrator (entry point)
+  fetch_all.py            CLI orchestrator (entry point)
 
 tube_agent/
-  config.py             Settings from environment variables
+  config.py               Settings + per-OS app data dir resolution
+  cli.py                  tube-api server entry point
+  cli_sidecar.py          Tauri sidecar entry (uvicorn programmatic runner)
   services/
-    youtube.py          YouTube Data API v3 client (httpx)
-    gemini.py           Gemini API client (multimodal video analysis)
-    pipeline.py         Pipeline orchestration (shared by CLI and API)
-    report.py           Channel report generation
+    youtube.py            YouTube Data API v3 client (httpx)
+    gemini.py             Gemini API client (multimodal video analysis)
+    transcripts.py        yt-dlp caption extractor
+    embeddings.py         EmbeddingProvider ABC + Fastembed (local) + Gemini providers
+    pipeline.py           Pipeline orchestration (shared by CLI and API)
+    report.py             Channel report generation
   storage/
-    base.py             StorageBackend ABC
-    local.py            JSON file storage
-    postgres.py         SQLAlchemy ORM (SQLite or Postgres)
-  api/                  FastAPI endpoints (BackgroundTasks-based)
-  migrations/           JSON → DB migration scripts
+    base.py               StorageBackend ABC (incl. embedding methods)
+    local.py              JSON file storage
+    postgres.py           SQLAlchemy ORM (SQLite or Postgres)
+  api/                    FastAPI endpoints (BackgroundTasks-based)
+    routes/system.py      Embedding warmup status + retry
+  migrations/             JSON → DB importer (tube-migrate)
 
-data/{handle}/
-  raw/                  Raw API responses
-    channel.json
-    videos.json
-    comments/{videoId}.json
-    summaries/{videoId}.json
-  processed/            Enriched data
-    channel_summary.json
-    videos_enriched.json
+desktop/                  Tauri 2 + Vite + React 19 + shadcn (see desktop/README.md)
+  src/                    React app (channels / search / video detail)
+  src-tauri/              Rust shell (sidecar spawn + lifecycle)
+  scripts/                build-sidecar.sh + build.sh
 
-output/{handle}/
-  reports/              Generated analysis reports
-    channel_overview.md
+data/{handle}/            CLI JSON output (legacy / migration source)
+  raw/, processed/
+
+output/{handle}/          CLI report output (legacy / migration source)
+  reports/
 ```

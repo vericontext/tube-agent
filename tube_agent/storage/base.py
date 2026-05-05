@@ -145,17 +145,17 @@ class StorageBackend(ABC):
     # --- Reports ---
 
     @abstractmethod
-    def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:
+    def save_report(self, channel_id: str, report_type: str, content_md: str) -> Any:
         """Save an analysis report."""
         ...
 
     @abstractmethod
-    def get_report(self, channel_id: str, report_type: str, tenant_id: str | None = None) -> dict | None:
+    def get_report(self, channel_id: str, report_type: str) -> dict | None:
         """Get the latest report of a given type for a channel."""
         ...
 
     @abstractmethod
-    def list_reports(self, channel_id: str, tenant_id: str | None = None) -> list[dict]:
+    def list_reports(self, channel_id: str) -> list[dict]:
         """List all reports for a channel."""
         ...
 

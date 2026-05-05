@@ -62,7 +62,6 @@ export interface TranscriptResponse {
 
 export interface JobResponse {
   id: string;
-  tenant_id: string | null;
   channel_id: string | null;
   job_type: string;
   status: JobStatus;

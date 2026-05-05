@@ -466,11 +466,10 @@ class PostgresStorage(StorageBackend):
 
     # --- Reports ---
 
-    def save_report(self, channel_id: str, report_type: str, content_md: str, tenant_id: str | None = None) -> Any:
+    def save_report(self, channel_id: str, report_type: str, content_md: str) -> Any:
         with self.get_session() as session:
             report = ChannelReport(
                 channel_id=channel_id,
-                tenant_id=tenant_id,
                 report_type=report_type,
                 content_md=content_md,
             )
@@ -478,30 +477,27 @@ class PostgresStorage(StorageBackend):
             session.commit()
             return report.id
 
-    def get_report(self, channel_id: str, report_type: str, tenant_id: str | None = None) -> dict | None:
+    def get_report(self, channel_id: str, report_type: str) -> dict | None:
         with self.get_session() as session:
             query = (
                 select(ChannelReport)
                 .where(ChannelReport.channel_id == channel_id)
                 .where(ChannelReport.report_type == report_type)
+                .order_by(desc(ChannelReport.created_at))
+                .limit(1)
             )
-            if tenant_id:
-                query = query.where(ChannelReport.tenant_id == tenant_id)
-            query = query.order_by(desc(ChannelReport.created_at)).limit(1)
             report = session.execute(query).scalar_one_or_none()
             if not report:
                 return None
             return _report_to_dict(report)
 
-    def list_reports(self, channel_id: str, tenant_id: str | None = None) -> list[dict]:
+    def list_reports(self, channel_id: str) -> list[dict]:
         with self.get_session() as session:
             query = (
                 select(ChannelReport)
                 .where(ChannelReport.channel_id == channel_id)
+                .order_by(desc(ChannelReport.created_at))
             )
-            if tenant_id:
-                query = query.where(ChannelReport.tenant_id == tenant_id)
-            query = query.order_by(desc(ChannelReport.created_at))
             reports = session.execute(query).scalars().all()
             return [_report_to_dict(r) for r in reports]
 
@@ -511,7 +507,6 @@ class PostgresStorage(StorageBackend):
         with self.get_session() as session:
             job = Job(
                 id=str(uuid.uuid4()),
-                tenant_id=job_data.get("tenant_id"),
                 channel_id=job_data.get("channel_id"),
                 job_type=job_data.get("job_type", "full_pipeline"),
                 status="pending",
@@ -663,7 +658,6 @@ def _report_to_dict(r: ChannelReport) -> dict:
     return {
         "id": r.id,
         "channel_id": r.channel_id,
-        "tenant_id": r.tenant_id,
         "report_type": r.report_type,
         "content_md": r.content_md,
         "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -673,7 +667,6 @@ def _report_to_dict(r: ChannelReport) -> dict:
 def _job_to_dict(j: Job) -> dict:
     return {
         "id": j.id,
-        "tenant_id": j.tenant_id,
         "channel_id": j.channel_id,
         "job_type": j.job_type,
         "status": j.status,

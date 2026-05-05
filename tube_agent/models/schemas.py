@@ -170,7 +170,6 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     id: str
-    tenant_id: str | None = None
     channel_id: str | None = None
     job_type: str
     status: JobStatus
@@ -188,7 +187,6 @@ class JobResponse(BaseModel):
 class ReportResponse(BaseModel):
     id: int
     channel_id: str
-    tenant_id: str | None = None
     report_type: str
     content_md: str
     created_at: datetime | None = None

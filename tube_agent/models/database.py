@@ -226,57 +226,16 @@ class TranscriptEmbedding(Base):
     )
 
 
-# --- Tenant Data ---
-
-class Tenant(Base):
-    __tablename__ = "tenants"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    name = Column(String, nullable=False)
-    plan = Column(String, default="free")
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
-
-    users = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
-    channels = relationship("TenantChannel", back_populates="tenant", cascade="all, delete-orphan")
-    reports = relationship("ChannelReport", back_populates="tenant", cascade="all, delete-orphan")
-    jobs = relationship("Job", back_populates="tenant", cascade="all, delete-orphan")
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False)
-    email = Column(String, unique=True, nullable=False)
-    role = Column(String, default="member")
-    created_at = Column(DateTime(timezone=True), default=_utcnow)
-
-    tenant = relationship("Tenant", back_populates="users")
-
-
-class TenantChannel(Base):
-    __tablename__ = "tenant_channels"
-
-    tenant_id = Column(String, ForeignKey("tenants.id"), primary_key=True)
-    channel_id = Column(String, ForeignKey("channels.id"), primary_key=True)
-    added_at = Column(DateTime(timezone=True), default=_utcnow)
-
-    tenant = relationship("Tenant", back_populates="channels")
-    channel = relationship("Channel")
-
-
 class ChannelReport(Base):
     __tablename__ = "channel_reports"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     channel_id = Column(String, ForeignKey("channels.id"), nullable=False)
-    tenant_id = Column(String, ForeignKey("tenants.id"))
     report_type = Column(String, nullable=False)
     content_md = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     channel = relationship("Channel", back_populates="reports")
-    tenant = relationship("Tenant", back_populates="reports")
 
     __table_args__ = (
         Index("ix_reports_channel_type", "channel_id", "report_type"),
@@ -287,7 +246,6 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(String, primary_key=True, default=_uuid)
-    tenant_id = Column(String, ForeignKey("tenants.id"))
     channel_id = Column(String, ForeignKey("channels.id"))
     job_type = Column(String, nullable=False)
     status = Column(String, default="pending")
@@ -297,9 +255,8 @@ class Job(Base):
     completed_at = Column(DateTime(timezone=True))
     error = Column(Text)
 
-    tenant = relationship("Tenant", back_populates="jobs")
     channel = relationship("Channel")
 
     __table_args__ = (
-        Index("ix_jobs_tenant_status", "tenant_id", "status"),
+        Index("ix_jobs_status", "status"),
     )
