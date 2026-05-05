@@ -21,12 +21,15 @@ export function AddChannelDialog() {
   const [open, setOpen] = useState(false);
   const [handle, setHandle] = useState("");
   const [maxVideos, setMaxVideos] = useState("100");
+  const [generateSummaries, setGenerateSummaries] = useState(true);
 
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.system.getSettings(),
   });
   const youtubeKeyMissing = settings?.youtube_api_key === "unset";
+  const geminiKeyMissing = settings?.gemini_api_key === "unset";
+  const shouldGenerateSummaries = generateSummaries && !geminiKeyMissing;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -34,7 +37,10 @@ export function AddChannelDialog() {
         handle: handle.replace(/^@/, ""),
         max_videos: Number.parseInt(maxVideos, 10) || 100,
         skip_comments: true,
-        skip_summaries: true,
+        skip_summaries: !shouldGenerateSummaries,
+        summary_max: 10,
+        summary_mode: "transcript",
+        summary_language: "en",
         fetch_transcripts: true,
         transcript_languages: ["ko", "en"],
       }),
@@ -99,6 +105,30 @@ export function AddChannelDialog() {
               onChange={(e) => setMaxVideos(e.target.value)}
             />
           </div>
+          <label className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={generateSummaries && !geminiKeyMissing}
+              disabled={geminiKeyMissing}
+              onChange={(e) => setGenerateSummaries(e.target.checked)}
+            />
+            <span>
+              <span className="block font-medium">Generate summaries for latest 10 videos</span>
+              <span className="block text-xs text-muted-foreground">
+                {geminiKeyMissing
+                  ? "Add a Gemini API key in Settings to enable transcript-based summaries."
+                  : "Uses saved transcripts and Gemini text generation. Results are stored locally."}
+              </span>
+            </span>
+          </label>
+          {geminiKeyMissing && (
+            <Button asChild variant="outline" className="w-full">
+              <Link to="/settings" onClick={() => setOpen(false)}>
+                Add Gemini key
+              </Link>
+            </Button>
+          )}
           {mutation.isError && (
             <p className="text-sm text-destructive">
               {mutation.error instanceof Error ? mutation.error.message : "Failed to start indexing"}

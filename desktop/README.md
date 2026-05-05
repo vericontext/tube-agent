@@ -2,6 +2,8 @@
 
 Tauri 2 + Vite + React 19 + Tailwind 4 shell that wraps the Python core (FastAPI sidecar with yt-dlp, Gemini, fastembed) into a single double-click app.
 
+v0.0.2 adds transcript-backed English summaries for the latest videos and a channel overview generated from saved summaries. v0.0.1 was primarily a transcript indexing + search preview.
+
 ```
 desktop/
 ├── src/                React UI (TanStack Query, React Router, shadcn)
@@ -100,5 +102,6 @@ Cross-compiling is out of scope — build from a host of the target OS. The `bui
 
 - `bundle.externalBin` requires an *exact* file at `binaries/tube-agent-sidecar-<host-triple>` at build time. If `tauri build` fails with "external binary not found", run `bash desktop/scripts/build-sidecar.sh` first.
 - The embedding model is downloaded on first run from Hugging Face Hub. Offline-first installs would need to pre-bake the model into the bundle (defer).
-- Multi-tenant DB columns (`tenant_id` etc.) are inert in this shape; cleanup is deferred to a focused PR.
-- The legacy Next.js app under `web/` is kept until the Tauri MVP is settled, then removed in a separate commit.
+- Gemini summaries require a Gemini API key in Settings. Search and transcript indexing still work without it.
+- The default summary path uses saved transcript text, not multimodal video analysis. The older multimodal path remains available from the CLI/API for experimentation.
+- Intel Mac builds still need to be produced on an x86_64 macOS host or GitHub Actions runner.

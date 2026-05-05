@@ -25,7 +25,11 @@ def main():
     parser.add_argument("--skip-report", action="store_true",
                         help="Skip automatic report generation")
     parser.add_argument("--summary-max", type=int, default=None,
-                        help="Max videos to analyze with Gemini (default: all)")
+                        help="Max videos to summarize with Gemini (default: 10 for transcript summaries)")
+    parser.add_argument("--summary-mode", choices=["transcript", "video"], default="transcript",
+                        help="Summary mode: transcript text (default) or Gemini video analysis")
+    parser.add_argument("--summary-language", default="en",
+                        help="Summary language for transcript summaries (default: en)")
     parser.add_argument("--media-resolution", choices=["low", "medium", "high"],
                         default="low", help="Gemini media resolution (default: low)")
     parser.add_argument("--workers", type=int, default=5,
@@ -37,11 +41,9 @@ def main():
     handle = args.handle.lstrip("@")
     settings = get_settings()
 
-    if settings.database_url.startswith(("postgresql", "sqlite")):
-        storage = PostgresStorage(settings.database_url)
-        storage.create_tables()
-    else:
-        storage = LocalStorage()
+    database_url = settings.resolve_database_url()
+    storage = PostgresStorage(database_url) if database_url.startswith(("postgresql", "sqlite")) else LocalStorage()
+    storage.create_tables()
 
     embedder = None
     fetch_transcript_data = not args.skip_transcripts
@@ -64,6 +66,8 @@ def main():
         transcript_languages=[lang.strip() for lang in args.transcript_languages.split(",") if lang.strip()],
         summary_max=args.summary_max,
         media_resolution=args.media_resolution,
+        summary_mode=args.summary_mode,
+        summary_language=args.summary_language,
         skip_report=args.skip_report,
         max_workers=args.workers,
         skip_embeddings=args.skip_embeddings,

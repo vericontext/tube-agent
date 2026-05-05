@@ -359,6 +359,54 @@ def fetch_summaries(
     return results
 
 
+def fetch_transcript_summaries(
+    videos: list[dict],
+    storage: StorageBackend,
+    gemini_client: GeminiClient,
+    max_videos: int | None = 10,
+    language: str = "en",
+) -> dict[str, bool]:
+    """Generate summaries from stored transcript segments for the latest videos."""
+    from tube_agent.services.summaries import (
+        SummaryGenerationError,
+        generate_and_save_transcript_summary,
+    )
+
+    target = sorted(
+        videos,
+        key=lambda v: v.get("publishedAt", v.get("published_at", "")) or "",
+        reverse=True,
+    )
+    if max_videos is not None:
+        target = target[:max_videos]
+
+    logger.info("Generating transcript summaries for %d videos (language=%s)...", len(target), language)
+    results = {}
+    success_count = 0
+    skipped_count = 0
+
+    for video in target:
+        vid = video["videoId"]
+        if storage.has_summary(vid):
+            results[vid] = True
+            skipped_count += 1
+            continue
+        try:
+            generate_and_save_transcript_summary(storage, vid, gemini_client, language=language)
+            results[vid] = True
+            success_count += 1
+        except SummaryGenerationError as e:
+            logger.info("  Transcript summary skipped for %s: %s", vid, e)
+            results[vid] = False
+        except Exception as e:
+            logger.warning("  Transcript summary failed for %s: %s", vid, e)
+            results[vid] = False
+
+    logger.info("  Transcript summaries: %d new, %d skipped", success_count, skipped_count)
+    logger.info("  %s", gemini_client.summary())
+    return results
+
+
 def run_full_pipeline(
     handle: str,
     storage: StorageBackend,
@@ -371,6 +419,8 @@ def run_full_pipeline(
     transcript_languages: list[str] | None = None,
     summary_max: int | None = None,
     media_resolution: str = "low",
+    summary_mode: str = "transcript",
+    summary_language: str = "en",
     skip_report: bool = False,
     max_workers: int = 5,
     skip_embeddings: bool = False,
@@ -412,13 +462,25 @@ def run_full_pipeline(
         if not skip_comments:
             fetch_comments(yt_client, videos, storage)
 
-        if not skip_summaries:
+        summary_results = {}
+        if not skip_summaries and not gemini_api_key:
+            logger.warning("Gemini API key is not set; skipping summaries and report")
+        elif not skip_summaries:
             gemini = GeminiClient(gemini_api_key)
-            fetch_summaries(videos, storage, gemini, summary_max, media_resolution, max_workers=max_workers)
+            if summary_mode == "transcript":
+                summary_results = fetch_transcript_summaries(
+                    videos,
+                    storage,
+                    gemini,
+                    max_videos=summary_max if summary_max is not None else 10,
+                    language=summary_language,
+                )
+            else:
+                summary_results = fetch_summaries(videos, storage, gemini, summary_max, media_resolution, max_workers=max_workers)
 
         # Generate report
         report_generated = False
-        if not skip_report and not skip_summaries:
+        if not skip_report and not skip_summaries and gemini_api_key:
             from tube_agent.services.report import generate_channel_report
             if gemini is None:
                 gemini = GeminiClient(gemini_api_key)
@@ -432,6 +494,7 @@ def run_full_pipeline(
             "handle": handle,
             "video_count": len(videos),
             "transcript_count": sum(1 for ok in transcript_results.values() if ok),
+            "summary_count": sum(1 for ok in summary_results.values() if ok),
             "embedded_count": embedded_count,
             "report_generated": report_generated,
             "quota": yt_client.quota.summary(),

@@ -7,19 +7,19 @@ from tube_agent.storage.base import StorageBackend
 from tube_agent.services.gemini import GeminiClient
 
 REPORT_PROMPT = """\
-You are a YouTube channel analyst. Based on the data below, write a comprehensive \
-channel analysis report in English, in markdown format.
+You are helping a viewer understand whether a YouTube channel is worth following.
+Based on the data below, write a concise channel overview in English, in markdown format.
 
 The report must include these sections:
 
-1. **Channel Overview** — subscriber count, total views, video count, founding date, description.
-2. **Content Strategy** — main topics, content types, posting frequency/patterns.
-3. **Performance Analysis** — top-performing and underperforming videos, engagement rates (like ratio, comment ratio), view distribution.
-4. **Trend Analysis** — how topics and performance have evolved over time, monthly upload patterns.
-5. **Summary-Based Insights** — key themes and patterns extracted from AI video analyses (summary intros provided).
-6. **Recommendations** — actionable suggestions for the channel based on data patterns.
+1. **What this channel is about** — clear one-paragraph overview.
+2. **Recurring themes** — main topics and patterns from summaries.
+3. **Start here** — 5 recommended videos from the supplied titles, with short reasons.
+4. **Audience fit** — who will benefit from this channel.
+5. **Publishing and performance notes** — only the most useful stats and outliers.
 
-Use concrete numbers and specific video titles. Be analytical, not just descriptive.
+Use concrete video titles when possible. Be useful to a viewer, not a channel operator.
+Keep the report skimmable: 600-900 words.
 
 Data:
 ```json

@@ -4,12 +4,15 @@ import type {
   ChannelListResponse,
   ChannelResponse,
   JobResponse,
+  ReportListResponse,
+  ReportResponse,
   SearchResponse,
   SettingsStatus,
   SettingsTest,
   SettingsTestResult,
   SettingsUpdate,
   TranscriptResponse,
+  VideoSummaryResponse,
   VideoListResponse,
   VideoResponse,
 } from "./types";
@@ -112,6 +115,20 @@ export const api = {
       get<TranscriptResponse>(`/channels/${handle}/videos/${videoId}/transcript`, {
         language,
       }),
+    getSummary: (handle: string, videoId: string) =>
+      get<VideoSummaryResponse>(`/channels/${handle}/videos/${videoId}/summary`),
+    generateSummary: (handle: string, videoId: string) =>
+      post<VideoSummaryResponse>(`/channels/${handle}/videos/${videoId}/summary`, {
+        summary_mode: "transcript",
+        summary_language: "en",
+      }),
+  },
+  reports: {
+    list: (handle: string) => get<ReportListResponse>(`/channels/${handle}/reports`),
+    getOverview: (handle: string) =>
+      get<ReportResponse>(`/channels/${handle}/reports/channel_overview`),
+    generateOverview: (handle: string) =>
+      post<ReportResponse>(`/channels/${handle}/reports/channel_overview`, {}),
   },
   jobs: {
     get: (id: string) => get<JobResponse>(`/jobs/${id}`),

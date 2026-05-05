@@ -1,6 +1,6 @@
 # Tube Agent
 
-Local-first desktop app for indexing YouTube channel transcripts and searching them by keyword **or** semantic meaning, on-device. Optional Gemini multimodal analysis layered on top for deeper per-video summaries and channel reports.
+Local-first desktop app for indexing YouTube channel transcripts, searching them by keyword **or** semantic meaning, and generating English summaries/overviews from saved transcripts.
 
 The whole stack runs locally: SQLite for storage, fastembed (ONNX) for embeddings, yt-dlp for transcript fetch. No cloud accounts, no auth, no recurring infrastructure cost.
 
@@ -19,7 +19,7 @@ python3 -m venv .venv
 cp .env.example .env
 # Required:
 #   YOUTUBE_API_KEY=...   from Google Cloud Console
-#   GEMINI_API_KEY=...    from Google AI Studio  (only needed for summaries / reports)
+#   GEMINI_API_KEY=...    from Google AI Studio  (only needed for summaries / overviews)
 ```
 
 The first run that touches semantic search downloads the embedding model (~220 MB) into the OS app data dir. Subsequent runs are instant.
@@ -62,7 +62,7 @@ Override with `APP_DATA_DIR=/some/path` in `.env`. Override the DB independently
 
 ## Pipeline: Step-by-Step
 
-The default pipeline is **fast and free**: channel metadata + video list + transcript captions + on-device embeddings. Comments, Gemini analysis, and reports are **opt-in** via flags.
+The default pipeline is **fast and free**: channel metadata + video list + transcript captions + on-device embeddings. Comments, Gemini summaries, and overviews are **opt-in** via flags or the desktop checkbox.
 
 ### Stage 1 — Channel metadata
 
@@ -106,15 +106,15 @@ Switch the embedding backend via `EMBEDDING_PROVIDER=gemini` + `EMBEDDING_MODEL=
 
 `GET /youtube/v3/commentThreads` for top-level comments (max 100 per video, sorted by relevance). Comment authors are SHA-256-hashed before storage for privacy. **Quota: 1 unit per video.**
 
-### Stage 6 — Gemini multimodal analysis (opt-in via `--with-summaries`)
+### Stage 6 — Gemini transcript summaries (opt-in via `--with-summaries`)
 
-Sends each video URL to Gemini 2.5 Flash. The model watches the video (frames + audio) and returns structured JSON: intro, bullets with timestamps, sectioned outline, topics, content type, target audience, tone, mentions, notable quotes. Results saved as `data/{handle}/raw/summaries/{videoId}.json` and to the DB.
+Uses the saved transcript text as Gemini input and returns structured JSON: intro, bullets with timestamps, sectioned outline, topics, content type, target audience, tone, mentions, notable paraphrases. Results are saved to the DB and can be opened from the desktop video detail page.
 
-Limit how many videos to analyse with `--summary-max N`. Resolution `low|medium|high` controls token cost (~100K-180K tokens at low).
+Desktop default is the latest 10 videos when the checkbox is enabled. CLI default is also 10 for transcript summaries. Use `--summary-mode video` to fall back to the older multimodal video analysis path.
 
-### Stage 7 — Channel report (runs after summaries unless `--skip-report`)
+### Stage 7 — Channel overview (runs after summaries unless `--skip-report`)
 
-Aggregates statistics + summary intros and asks Gemini to produce a markdown overview report. Saved to `output/{handle}/reports/channel_overview.md`.
+Aggregates channel metadata, video stats, and saved summaries, then asks Gemini to produce an English markdown overview: what the channel is about, recurring themes, recommended starting videos, and audience fit.
 
 ---
 
@@ -139,12 +139,14 @@ The DB schema is created idempotently on first start — no migrations to run.
 |--------|---------|-------------|
 | `--max-videos N` | 100 | Newest N videos to fetch |
 | `--with-comments` | off | Fetch top-level comments |
-| `--with-summaries` | off | Run Gemini multimodal analysis |
+| `--with-summaries` | off | Generate Gemini transcript summaries |
 | `--skip-transcripts` | off | Skip transcript fetch |
 | `--skip-embeddings` | off | Skip on-device embedding generation |
 | `--skip-report` | off | Skip Gemini report generation (only matters with `--with-summaries`) |
 | `--transcript-languages` | `ko,en` | Comma-separated language priority |
-| `--summary-max N` | all | Cap how many videos go through Gemini |
+| `--summary-max N` | 10 | Cap how many latest videos get summarized |
+| `--summary-mode` | `transcript` | `transcript` summary or older `video` multimodal analysis |
+| `--summary-language` | `en` | Summary output language for transcript summaries |
 | `--media-resolution` | `low` | Gemini frame sampling: `low` / `medium` / `high` |
 | `--workers N` | 5 | Parallel workers for transcript + summary stages |
 
@@ -154,7 +156,7 @@ The DB schema is created idempotently on first start — no migrations to run.
 # Default: latest 20 videos, transcripts + embeddings only (no Gemini)
 .venv/bin/python -m scripts.fetch_all @eo_korea --max-videos 20
 
-# Add Gemini summaries for 10 of them
+# Add English transcript summaries for the latest 10 videos
 .venv/bin/python -m scripts.fetch_all @eo_korea \
   --max-videos 20 --with-summaries --summary-max 10
 
@@ -182,9 +184,11 @@ In-process FastAPI with `BackgroundTasks` — no Celery, no Redis, single binary
 | GET | `/api/v1/channels/{handle}` | Channel details |
 | GET | `/api/v1/channels/{handle}/videos` | Video list (sort/filter/paginate) |
 | GET | `/api/v1/channels/{handle}/videos/{id}/summary` | Video summary |
+| POST | `/api/v1/channels/{handle}/videos/{id}/summary` | Generate transcript summary |
 | GET | `/api/v1/channels/{handle}/videos/{id}/transcript` | Timestamped transcript |
 | GET | `/api/v1/channels/{handle}/reports` | List reports |
 | GET | `/api/v1/channels/{handle}/reports/{type}` | Get report |
+| POST | `/api/v1/channels/{handle}/reports/channel_overview` | Generate channel overview |
 | GET | `/api/v1/search?q=...` | Keyword search across videos / summaries / transcripts (ILIKE) |
 | GET | `/api/v1/search/semantic?q=...&channel=...` | Semantic transcript search (cosine over embeddings) |
 | GET | `/api/v1/system/embedding-status` | Embedding model warmup state |

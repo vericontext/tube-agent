@@ -1,12 +1,14 @@
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDuration, formatNumber } from "@/lib/format";
 
 export function ChannelDetailPage() {
   const { handle } = useParams<{ handle: string }>();
+  const queryClient = useQueryClient();
 
   const channelQuery = useQuery({
     queryKey: ["channel", handle],
@@ -18,6 +20,20 @@ export function ChannelDetailPage() {
     queryKey: ["videos", handle],
     queryFn: () => api.videos.list(handle!, { sort_by: "published_at", sort_order: "desc", limit: 100 }),
     enabled: Boolean(handle),
+  });
+
+  const overviewQuery = useQuery({
+    queryKey: ["channel-overview", handle],
+    queryFn: () => api.reports.getOverview(handle!),
+    enabled: Boolean(handle),
+    retry: false,
+  });
+
+  const overviewMutation = useMutation({
+    mutationFn: () => api.reports.generateOverview(handle!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["channel-overview", handle] });
+    },
   });
 
   if (!handle) return null;
@@ -40,6 +56,50 @@ export function ChannelDetailPage() {
           </div>
         </div>
       )}
+
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold">Channel overview</h2>
+              <p className="text-xs text-muted-foreground">
+                Generated from saved video summaries.
+              </p>
+            </div>
+            {!overviewQuery.data && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => overviewMutation.mutate()}
+                disabled={overviewMutation.isPending}
+              >
+                {overviewMutation.isPending ? "Generating…" : "Generate overview"}
+              </Button>
+            )}
+          </div>
+          {overviewQuery.isLoading && (
+            <p className="text-sm text-muted-foreground">Loading overview…</p>
+          )}
+          {overviewQuery.data ? (
+            <div className="max-w-none whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+              {overviewQuery.data.content_md}
+            </div>
+          ) : (
+            !overviewQuery.isLoading && (
+              <p className="text-sm text-muted-foreground">
+                No channel overview yet. Generate summaries for videos first, then create an overview.
+              </p>
+            )
+          )}
+          {overviewMutation.isError && (
+            <p className="text-xs text-destructive">
+              {overviewMutation.error instanceof Error
+                ? overviewMutation.error.message
+                : "Overview generation failed"}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-0">

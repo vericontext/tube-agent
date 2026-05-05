@@ -49,7 +49,7 @@ export function SettingsPage() {
     {
       id: "gemini",
       title: "Google Gemini API",
-      helper: "Optional. Only needed for the multimodal video summary stage.",
+      helper: "Optional. Needed for transcript summaries and channel overviews.",
       status: settings.data.gemini_api_key,
     },
   ];

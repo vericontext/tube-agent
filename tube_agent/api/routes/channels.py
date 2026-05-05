@@ -51,6 +51,8 @@ def _run_pipeline_job(job_id: str, handle: str, body: ChannelCreate, storage: Po
             transcript_languages=body.transcript_languages,
             summary_max=body.summary_max,
             media_resolution=body.media_resolution,
+            summary_mode=body.summary_mode,
+            summary_language=body.summary_language,
             embedder=embedder,
         )
         storage.update_job(job_id, {
@@ -85,6 +87,8 @@ def create_channel_analysis(
             "transcript_languages": body.transcript_languages,
             "summary_max": body.summary_max,
             "media_resolution": body.media_resolution,
+            "summary_mode": body.summary_mode,
+            "summary_language": body.summary_language,
         },
     })
 

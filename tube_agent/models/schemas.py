@@ -39,8 +39,10 @@ class ChannelCreate(BaseModel):
     max_videos: int = Field(default=100, ge=1, le=1000)
     skip_comments: bool = True
     skip_summaries: bool = True
-    summary_max: int | None = None
+    summary_max: int | None = 10
     media_resolution: str = "low"
+    summary_mode: str = "transcript"
+    summary_language: str = "en"
     fetch_transcripts: bool = True
     transcript_languages: list[str] = ["ko", "en"]
 
@@ -138,6 +140,11 @@ class VideoSummaryResponse(BaseModel):
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class SummaryGenerateRequest(BaseModel):
+    summary_mode: str = "transcript"
+    summary_language: str = "en"
 
 
 # --- Transcripts ---

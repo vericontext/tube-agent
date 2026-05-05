@@ -60,6 +60,45 @@ export interface TranscriptResponse {
   segments: TranscriptSegmentResponse[];
 }
 
+export interface SummarySectionResponse {
+  timestamp: string;
+  title: string;
+  content: string;
+}
+
+export interface SummaryBulletResponse {
+  title: string;
+  timestamp: string;
+  description: string;
+}
+
+export interface VideoSummaryResponse {
+  video_id: string;
+  summary_intro: string | null;
+  topics: string[];
+  content_type: string | null;
+  target_audience: string | null;
+  tone: string | null;
+  mentions: string[];
+  notable_quotes: string[];
+  sections: SummarySectionResponse[];
+  bullets: SummaryBulletResponse[];
+  created_at: string | null;
+}
+
+export interface ReportResponse {
+  id: number;
+  channel_id: string;
+  report_type: string;
+  content_md: string;
+  created_at: string | null;
+}
+
+export interface ReportListResponse {
+  reports: ReportResponse[];
+  total: number;
+}
+
 export interface JobResponse {
   id: string;
   channel_id: string | null;
@@ -99,6 +138,8 @@ export interface ChannelCreateRequest {
   skip_summaries?: boolean;
   summary_max?: number | null;
   media_resolution?: string;
+  summary_mode?: string;
+  summary_language?: string;
   fetch_transcripts?: boolean;
   transcript_languages?: string[];
 }

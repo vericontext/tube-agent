@@ -216,7 +216,21 @@ class LocalStorage(StorageBackend):
                 path = d / "raw" / "summaries" / f"{video_id}.json"
                 data = self._load_json(path)
                 if data and "analysis" in data:
-                    return data
+                    analysis = data.get("analysis", {})
+                    return {
+                        "video_id": data.get("videoId", video_id),
+                        "summary_intro": analysis.get("summary_intro"),
+                        "topics": analysis.get("topics", []),
+                        "content_type": analysis.get("content_type"),
+                        "target_audience": analysis.get("target_audience"),
+                        "tone": analysis.get("tone"),
+                        "mentions": analysis.get("mentions", []),
+                        "notable_quotes": analysis.get("notable_quotes", []),
+                        "sections": analysis.get("sections", []),
+                        "bullets": analysis.get("summary_bullets", []),
+                        "raw_analysis": analysis,
+                        "created_at": None,
+                    }
         return None
 
     def has_summary(self, video_id: str) -> bool:
