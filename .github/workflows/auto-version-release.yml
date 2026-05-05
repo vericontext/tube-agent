@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   release-if-version-untagged:
-    name: Auto tag and draft release
+    name: Auto tag and publish release
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: macos-15
 
@@ -97,7 +97,7 @@ jobs:
         if: steps.tag.outputs.exists == 'false'
         run: bash desktop/scripts/build-sidecar.sh
 
-      - name: Build and upload draft release
+      - name: Build and publish release
         if: steps.tag.outputs.exists == 'false'
         uses: tauri-apps/tauri-action@v0
         env:
@@ -114,5 +114,5 @@ jobs:
             Built automatically after CI passed on main for ${{ steps.version.outputs.tag }}.
 
             Download the DMG, install Tube Agent, and follow the Gatekeeper workaround in the release guide if macOS blocks first launch.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false

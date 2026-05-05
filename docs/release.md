@@ -9,7 +9,7 @@ GitHub release workflows.
 - Trigger: push to `main` with a new desktop version, after CI passes.
 - Fallback trigger: manually push a Git tag named `v0.0.x`.
 - Artifact: unsigned macOS Apple Silicon DMG.
-- Release state: GitHub draft release until a human smoke-tests the DMG.
+- Release state: published GitHub Release. Unsigned builds still require the documented Gatekeeper workaround.
 - API keys: never baked into the app; users enter YouTube and Gemini keys in Settings.
 - Changelog: every release must have a matching `CHANGELOG.md` entry.
 
@@ -69,9 +69,9 @@ version bump will run CI but will not produce a new release.
 
 5. Confirm the `CI` workflow is green on `main`.
 
-6. Wait for `Auto Version Release` to create `v0.0.2` and draft the GitHub Release.
+6. Wait for `Auto Version Release` to create `v0.0.2` and publish the GitHub Release.
 
-7. Download the DMG from the draft release and smoke-test it on Apple Silicon macOS:
+7. Download the DMG from the release and smoke-test it on Apple Silicon macOS:
 
    - Open the DMG.
    - Drag Tube Agent to Applications.
@@ -80,14 +80,14 @@ version bump will run CI but will not produce a new release.
    - Open Settings and confirm YouTube/Gemini key status is shown.
    - Add a small channel or use existing local data to confirm the sidecar starts.
 
-8. Edit the draft release notes with:
+8. Edit the release notes if needed:
 
    - What changed.
    - What works.
    - Known limitations.
    - Unsigned install instructions below.
 
-9. Publish the draft release.
+9. The release is now public. If the unsigned DMG fails smoke testing, edit the release notes immediately or delete the release and tag before cutting a fixed version.
 
 ## Manual Tag Fallback
 
@@ -100,7 +100,7 @@ yourself:
    ```
 
 The `Release` workflow will build the same unsigned Apple Silicon DMG from that
-tag and create a draft release.
+tag and publish the release.
 
 If the tag already exists but the release build failed, run the `Release`
 workflow manually from GitHub Actions with the existing tag, for example

@@ -48,7 +48,7 @@ cd desktop && bash scripts/build.sh                            # release (.app +
 - The legacy `Tenant`/`User` schema was removed; if a stale reference shows up in old code, delete rather than restore.
 - Keep generated docs and reports in English.
 - For desktop changes, prefer `cargo check` over a full `tauri build` while iterating; the release build takes ~3 min on a warm cache.
-- Keep release discipline agent-neutral: update `CHANGELOG.md` for release-worthy changes, follow `docs/release.md` for version bump rules, and keep `desktop/package.json`, `desktop/src-tauri/tauri.conf.json`, and `desktop/src-tauri/Cargo.toml` in sync. A push to `main` with a new desktop version auto-creates the release tag and draft DMG after CI passes.
+- Keep release discipline agent-neutral: update `CHANGELOG.md` for release-worthy changes, follow `docs/release.md` for version bump rules, and keep `desktop/package.json`, `desktop/src-tauri/tauri.conf.json`, and `desktop/src-tauri/Cargo.toml` in sync. A push to `main` with a new desktop version auto-creates the release tag and publishes the DMG after CI passes.
 
 ## Past pivots (so you don't re-debate them)
 
