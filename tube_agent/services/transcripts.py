@@ -64,6 +64,16 @@ class TranscriptExtractor:
             raise TranscriptUnavailableError(f"Unable to inspect subtitles for {video_id}: {exc}") from exc
 
     def _select_track(self, info: dict[str, Any]) -> dict[str, str]:
+        """Pick the best caption track for this video.
+
+        Priority order:
+          1. Manual subs in any preferred language.
+          2. Auto-generated *source* captions in any preferred language
+             (URL has no ``tlang=``).
+          3. Auto-translated captions to a preferred language (URL has
+             ``tlang=``) — last resort, since YouTube rate-limits the
+             translation endpoint aggressively.
+        """
         subtitles = info.get("subtitles") or {}
         automatic = info.get("automatic_captions") or {}
 
@@ -72,9 +82,17 @@ class TranscriptExtractor:
             if selected:
                 selected["source"] = "manual"
                 return selected
+
+        for language in self.languages:
+            selected = _find_language_track(automatic, language)
+            if selected and "tlang=" not in selected["url"]:
+                selected["source"] = "auto"
+                return selected
+
+        for language in self.languages:
             selected = _find_language_track(automatic, language)
             if selected:
-                selected["source"] = "auto"
+                selected["source"] = "auto-translated"
                 return selected
 
         raise TranscriptUnavailableError("No matching transcript language found")
